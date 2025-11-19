@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabase';
 import {
   Users,
   TrendingUp,
@@ -28,21 +29,32 @@ interface User {
   id: string;
   name: string;
   email: string;
-  plan: 'Simples' | 'Médio' | 'Top';
-  status: 'Ativo' | 'Inativo' | 'Cancelado';
+  plan: string;
+  status: 'Ativo' | 'Inativo';
   joinDate: string;
   lastAccess: string;
-  weight: number;
-  goal: string;
+}
+
+interface Stats {
+  totalUsers: number;
+  activeUsers: number;
+  registeredUsers: number;
+  premiumUsers: number;
 }
 
 export default function AdminDashboard() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<'dashboard' | 'users' | 'stats'>('dashboard');
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterPlan, setFilterPlan] = useState<string>('all');
   const [users, setUsers] = useState<User[]>([]);
+  const [stats, setStats] = useState<Stats>({
+    totalUsers: 0,
+    activeUsers: 0,
+    registeredUsers: 0,
+    premiumUsers: 0
+  });
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   // Verificar autenticação
   useEffect(() => {
@@ -52,85 +64,79 @@ export default function AdminDashboard() {
     }
   }, [router]);
 
-  // Dados mockados (em produção, buscar do Supabase)
+  // Buscar dados reais do Supabase
   useEffect(() => {
-    const mockUsers: User[] = [
-      {
-        id: '1',
-        name: 'Maria Silva',
-        email: 'maria@email.com',
-        plan: 'Top',
-        status: 'Ativo',
-        joinDate: '2024-01-15',
-        lastAccess: '2024-03-20',
-        weight: 68,
-        goal: 'Perder peso'
-      },
-      {
-        id: '2',
-        name: 'João Santos',
-        email: 'joao@email.com',
-        plan: 'Médio',
-        status: 'Ativo',
-        joinDate: '2024-02-10',
-        lastAccess: '2024-03-19',
-        weight: 82,
-        goal: 'Ganhar massa'
-      },
-      {
-        id: '3',
-        name: 'Ana Costa',
-        email: 'ana@email.com',
-        plan: 'Simples',
-        status: 'Ativo',
-        joinDate: '2024-03-01',
-        lastAccess: '2024-03-20',
-        weight: 62,
-        goal: 'Manter peso'
-      },
-      {
-        id: '4',
-        name: 'Pedro Oliveira',
-        email: 'pedro@email.com',
-        plan: 'Top',
-        status: 'Ativo',
-        joinDate: '2024-01-20',
-        lastAccess: '2024-03-18',
-        weight: 90,
-        goal: 'Perder peso'
-      },
-      {
-        id: '5',
-        name: 'Carla Mendes',
-        email: 'carla@email.com',
-        plan: 'Médio',
-        status: 'Inativo',
-        joinDate: '2024-02-15',
-        lastAccess: '2024-03-10',
-        weight: 58,
-        goal: 'Ganhar massa'
-      }
-    ];
-    setUsers(mockUsers);
-  }, []);
+    async function fetchUsers() {
+      try {
+        setLoading(true);
 
-  // Estatísticas
-  const stats = {
-    totalUsers: users.length,
-    activeUsers: users.filter(u => u.status === 'Ativo').length,
-    newThisMonth: users.filter(u => new Date(u.joinDate).getMonth() === new Date().getMonth()).length,
-    revenue: users.filter(u => u.status === 'Ativo').reduce((acc, u) => {
-      const prices = { 'Simples': 19.90, 'Médio': 27.90, 'Top': 39.90 };
-      return acc + prices[u.plan];
-    }, 0)
-  };
+        // Buscar todos os usuários da tabela users
+        const { data: usersData, error: usersError } = await supabase
+          .from('users')
+          .select('id, email, name, created_at, last_sign_in_at')
+          .order('created_at', { ascending: false });
+
+        if (usersError) {
+          console.error('Erro ao buscar usuários:', usersError);
+          return;
+        }
+
+        // Buscar assinaturas ativas
+        const { data: subscriptionsData, error: subsError } = await supabase
+          .from('subscriptions')
+          .select('user_id, is_active, plan_type')
+          .eq('is_active', true);
+
+        if (subsError) {
+          console.error('Erro ao buscar assinaturas:', subsError);
+        }
+
+        // Mapear usuários com informações de assinatura
+        const mappedUsers: User[] = (usersData || []).map((user: any) => {
+          const subscription = subscriptionsData?.find(sub => sub.user_id === user.id);
+          const hasActiveSub = !!subscription;
+          
+          return {
+            id: user.id,
+            name: user.name || 'Sem nome',
+            email: user.email || 'Sem email',
+            plan: hasActiveSub ? 'Premium Completo' : 'Sem plano',
+            status: hasActiveSub ? 'Ativo' : 'Inativo',
+            joinDate: user.created_at || new Date().toISOString(),
+            lastAccess: user.last_sign_in_at || user.created_at || new Date().toISOString()
+          };
+        });
+
+        setUsers(mappedUsers);
+
+        // Calcular estatísticas
+        const totalUsers = mappedUsers.length;
+        const activeUsers = mappedUsers.filter(u => u.status === 'Ativo').length;
+        const registeredUsers = totalUsers; // Todos os usuários cadastrados
+        const premiumUsers = mappedUsers.filter(u => u.plan === 'Premium Completo').length;
+
+        setStats({
+          totalUsers,
+          activeUsers,
+          registeredUsers,
+          premiumUsers
+        });
+
+      } catch (error) {
+        console.error('Erro ao carregar dados:', error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchUsers();
+  }, []);
 
   // Filtrar usuários
   const filteredUsers = users.filter(user => {
     const matchesSearch = user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          user.email.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesPlan = filterPlan === 'all' || user.plan === filterPlan;
-    return matchesSearch && matchesPlan;
+    return matchesSearch;
   });
 
   // Logout
@@ -140,22 +146,11 @@ export default function AdminDashboard() {
     router.push('/admin/login');
   };
 
-  // Plan badge color
-  const getPlanColor = (plan: string) => {
-    switch (plan) {
-      case 'Top': return 'bg-gradient-to-r from-yellow-500 to-orange-500';
-      case 'Médio': return 'bg-gradient-to-r from-purple-500 to-pink-500';
-      case 'Simples': return 'bg-gradient-to-r from-blue-500 to-cyan-500';
-      default: return 'bg-gray-500';
-    }
-  };
-
   // Status badge color
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'Ativo': return 'bg-green-500/20 text-green-400 border-green-500/30';
       case 'Inativo': return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
-      case 'Cancelado': return 'bg-red-500/20 text-red-400 border-red-500/30';
       default: return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
     }
   };
@@ -264,229 +259,220 @@ export default function AdminDashboard() {
 
         {/* Content */}
         <div className="p-6">
-          {/* Dashboard Tab */}
-          {activeTab === 'dashboard' && (
-            <div className="space-y-6">
-              {/* Stats Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 hover:bg-white/10 transition-all">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl flex items-center justify-center">
-                      <Users className="w-6 h-6 text-white" />
-                    </div>
-                    <span className="text-green-400 text-sm font-medium">+12%</span>
-                  </div>
-                  <h3 className="text-3xl font-bold text-white mb-1">{stats.totalUsers}</h3>
-                  <p className="text-gray-400 text-sm">Total de Usuários</p>
-                </div>
-
-                <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 hover:bg-white/10 transition-all">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-500 rounded-xl flex items-center justify-center">
-                      <Activity className="w-6 h-6 text-white" />
-                    </div>
-                    <span className="text-green-400 text-sm font-medium">+8%</span>
-                  </div>
-                  <h3 className="text-3xl font-bold text-white mb-1">{stats.activeUsers}</h3>
-                  <p className="text-gray-400 text-sm">Usuários Ativos</p>
-                </div>
-
-                <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 hover:bg-white/10 transition-all">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center">
-                      <UserPlus className="w-6 h-6 text-white" />
-                    </div>
-                    <span className="text-green-400 text-sm font-medium">+24%</span>
-                  </div>
-                  <h3 className="text-3xl font-bold text-white mb-1">{stats.newThisMonth}</h3>
-                  <p className="text-gray-400 text-sm">Novos Este Mês</p>
-                </div>
-
-                <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 hover:bg-white/10 transition-all">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="w-12 h-12 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-xl flex items-center justify-center">
-                      <DollarSign className="w-6 h-6 text-white" />
-                    </div>
-                    <span className="text-green-400 text-sm font-medium">+18%</span>
-                  </div>
-                  <h3 className="text-3xl font-bold text-white mb-1">R$ {stats.revenue.toFixed(2)}</h3>
-                  <p className="text-gray-400 text-sm">Receita Mensal</p>
-                </div>
-              </div>
-
-              {/* Recent Users */}
-              <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
-                <h2 className="text-xl font-bold text-white mb-6">Usuários Recentes</h2>
-                <div className="space-y-4">
-                  {users.slice(0, 5).map((user) => (
-                    <div key={user.id} className="flex items-center justify-between p-4 bg-white/5 rounded-xl hover:bg-white/10 transition-all">
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-gradient-to-br from-purple-600 to-pink-600 rounded-full flex items-center justify-center text-white font-bold">
-                          {user.name.charAt(0)}
-                        </div>
-                        <div>
-                          <h3 className="text-white font-medium">{user.name}</h3>
-                          <p className="text-gray-400 text-sm">{user.email}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${getPlanColor(user.plan)} text-white`}>
-                          {user.plan}
-                        </span>
-                        <span className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(user.status)}`}>
-                          {user.status}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+          {loading ? (
+            <div className="flex items-center justify-center h-64">
+              <div className="text-white text-lg">Carregando dados...</div>
             </div>
-          )}
+          ) : (
+            <>
+              {/* Dashboard Tab */}
+              {activeTab === 'dashboard' && (
+                <div className="space-y-6">
+                  {/* Stats Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 hover:bg-white/10 transition-all">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl flex items-center justify-center">
+                          <Users className="w-6 h-6 text-white" />
+                        </div>
+                      </div>
+                      <h3 className="text-3xl font-bold text-white mb-1">{stats.registeredUsers}</h3>
+                      <p className="text-gray-400 text-sm">Usuários Cadastrados</p>
+                    </div>
 
-          {/* Users Tab */}
-          {activeTab === 'users' && (
-            <div className="space-y-6">
-              {/* Filters */}
-              <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
-                <div className="flex flex-col sm:flex-row gap-4">
-                  <div className="flex-1 relative">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                    <input
-                      type="text"
-                      placeholder="Buscar usuário..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="w-full pl-12 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    />
+                    <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 hover:bg-white/10 transition-all">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-500 rounded-xl flex items-center justify-center">
+                          <Activity className="w-6 h-6 text-white" />
+                        </div>
+                      </div>
+                      <h3 className="text-3xl font-bold text-white mb-1">{stats.activeUsers}</h3>
+                      <p className="text-gray-400 text-sm">Usuários Logados (Ativos)</p>
+                    </div>
+
+                    <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 hover:bg-white/10 transition-all">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center">
+                          <Crown className="w-6 h-6 text-white" />
+                        </div>
+                      </div>
+                      <h3 className="text-3xl font-bold text-white mb-1">{stats.premiumUsers}</h3>
+                      <p className="text-gray-400 text-sm">Plano Premium Completo</p>
+                    </div>
+
+                    <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 hover:bg-white/10 transition-all">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="w-12 h-12 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-xl flex items-center justify-center">
+                          <DollarSign className="w-6 h-6 text-white" />
+                        </div>
+                      </div>
+                      <h3 className="text-3xl font-bold text-white mb-1">R$ {(stats.premiumUsers * 97).toFixed(2)}</h3>
+                      <p className="text-gray-400 text-sm">Receita Estimada</p>
+                    </div>
                   </div>
-                  <select
-                    value={filterPlan}
-                    onChange={(e) => setFilterPlan(e.target.value)}
-                    className="px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  >
-                    <option value="all">Todos os Planos</option>
-                    <option value="Simples">Simples</option>
-                    <option value="Médio">Médio</option>
-                    <option value="Top">Top</option>
-                  </select>
-                </div>
-              </div>
 
-              {/* Users Table */}
-              <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-white/5 border-b border-white/10">
-                      <tr>
-                        <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Usuário</th>
-                        <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Plano</th>
-                        <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Status</th>
-                        <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Data de Entrada</th>
-                        <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Último Acesso</th>
-                        <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Ações</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/10">
-                      {filteredUsers.map((user) => (
-                        <tr key={user.id} className="hover:bg-white/5 transition-colors">
-                          <td className="px-6 py-4">
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 bg-gradient-to-br from-purple-600 to-pink-600 rounded-full flex items-center justify-center text-white font-bold text-sm">
-                                {user.name.charAt(0)}
-                              </div>
-                              <div>
-                                <div className="text-white font-medium">{user.name}</div>
-                                <div className="text-gray-400 text-sm">{user.email}</div>
-                              </div>
+                  {/* Recent Users */}
+                  <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
+                    <h2 className="text-xl font-bold text-white mb-6">Usuários Recentes</h2>
+                    <div className="space-y-4">
+                      {users.slice(0, 5).map((user) => (
+                        <div key={user.id} className="flex items-center justify-between p-4 bg-white/5 rounded-xl hover:bg-white/10 transition-all">
+                          <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 bg-gradient-to-br from-purple-600 to-pink-600 rounded-full flex items-center justify-center text-white font-bold">
+                              {user.name.charAt(0)}
                             </div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className={`px-3 py-1 rounded-full text-xs font-medium ${getPlanColor(user.plan)} text-white inline-flex items-center gap-1`}>
-                              {user.plan === 'Top' && <Crown className="w-3 h-3" />}
+                            <div>
+                              <h3 className="text-white font-medium">{user.name}</h3>
+                              <p className="text-gray-400 text-sm">{user.email}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className={`px-3 py-1 rounded-full text-xs font-medium ${user.plan === 'Premium Completo' ? 'bg-gradient-to-r from-yellow-500 to-orange-500 text-white' : 'bg-gray-500/20 text-gray-400'}`}>
                               {user.plan}
                             </span>
-                          </td>
-                          <td className="px-6 py-4">
                             <span className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(user.status)}`}>
                               {user.status}
                             </span>
-                          </td>
-                          <td className="px-6 py-4 text-gray-400 text-sm">
-                            {new Date(user.joinDate).toLocaleDateString('pt-BR')}
-                          </td>
-                          <td className="px-6 py-4 text-gray-400 text-sm">
-                            {new Date(user.lastAccess).toLocaleDateString('pt-BR')}
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="flex items-center gap-2">
-                              <button className="p-2 hover:bg-white/10 rounded-lg transition-colors text-blue-400 hover:text-blue-300">
-                                <Edit className="w-4 h-4" />
-                              </button>
-                              <button className="p-2 hover:bg-white/10 rounded-lg transition-colors text-red-400 hover:text-red-300">
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Stats Tab */}
-          {activeTab === 'stats' && (
-            <div className="space-y-6">
-              {/* Plan Distribution */}
-              <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
-                <h2 className="text-xl font-bold text-white mb-6">Distribuição por Plano</h2>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                  {['Simples', 'Médio', 'Top'].map((plan) => {
-                    const count = users.filter(u => u.plan === plan).length;
-                    const percentage = ((count / users.length) * 100).toFixed(1);
-                    return (
-                      <div key={plan} className="bg-white/5 rounded-xl p-6">
-                        <div className={`w-12 h-12 ${getPlanColor(plan)} rounded-xl flex items-center justify-center mb-4`}>
-                          {plan === 'Top' && <Crown className="w-6 h-6 text-white" />}
-                          {plan === 'Médio' && <TrendingUp className="w-6 h-6 text-white" />}
-                          {plan === 'Simples' && <Users className="w-6 h-6 text-white" />}
+                          </div>
                         </div>
-                        <h3 className="text-2xl font-bold text-white mb-1">{count}</h3>
-                        <p className="text-gray-400 text-sm mb-2">Plano {plan}</p>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Users Tab */}
+              {activeTab === 'users' && (
+                <div className="space-y-6">
+                  {/* Filters */}
+                  <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
+                    <div className="flex flex-col sm:flex-row gap-4">
+                      <div className="flex-1 relative">
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                        <input
+                          type="text"
+                          placeholder="Buscar usuário..."
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                          className="w-full pl-12 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Users Table */}
+                  <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="bg-white/5 border-b border-white/10">
+                          <tr>
+                            <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Usuário</th>
+                            <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Plano</th>
+                            <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Status</th>
+                            <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Data de Cadastro</th>
+                            <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Último Acesso</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/10">
+                          {filteredUsers.map((user) => (
+                            <tr key={user.id} className="hover:bg-white/5 transition-colors">
+                              <td className="px-6 py-4">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-10 h-10 bg-gradient-to-br from-purple-600 to-pink-600 rounded-full flex items-center justify-center text-white font-bold text-sm">
+                                    {user.name.charAt(0)}
+                                  </div>
+                                  <div>
+                                    <div className="text-white font-medium">{user.name}</div>
+                                    <div className="text-gray-400 text-sm">{user.email}</div>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-6 py-4">
+                                <span className={`px-3 py-1 rounded-full text-xs font-medium ${user.plan === 'Premium Completo' ? 'bg-gradient-to-r from-yellow-500 to-orange-500 text-white inline-flex items-center gap-1' : 'bg-gray-500/20 text-gray-400'}`}>
+                                  {user.plan === 'Premium Completo' && <Crown className="w-3 h-3" />}
+                                  {user.plan}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4">
+                                <span className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(user.status)}`}>
+                                  {user.status}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 text-gray-400 text-sm">
+                                {new Date(user.joinDate).toLocaleDateString('pt-BR')}
+                              </td>
+                              <td className="px-6 py-4 text-gray-400 text-sm">
+                                {new Date(user.lastAccess).toLocaleDateString('pt-BR')}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Stats Tab */}
+              {activeTab === 'stats' && (
+                <div className="space-y-6">
+                  {/* Plan Distribution */}
+                  <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
+                    <h2 className="text-xl font-bold text-white mb-6">Distribuição de Usuários</h2>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                      <div className="bg-white/5 rounded-xl p-6">
+                        <div className="w-12 h-12 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-xl flex items-center justify-center mb-4">
+                          <Crown className="w-6 h-6 text-white" />
+                        </div>
+                        <h3 className="text-2xl font-bold text-white mb-1">{stats.premiumUsers}</h3>
+                        <p className="text-gray-400 text-sm mb-2">Plano Premium Completo</p>
                         <div className="w-full bg-white/10 rounded-full h-2">
                           <div
-                            className={`h-2 rounded-full ${getPlanColor(plan)}`}
-                            style={{ width: `${percentage}%` }}
+                            className="h-2 rounded-full bg-gradient-to-r from-yellow-500 to-orange-500"
+                            style={{ width: `${stats.totalUsers > 0 ? (stats.premiumUsers / stats.totalUsers) * 100 : 0}%` }}
                           ></div>
                         </div>
-                        <p className="text-gray-400 text-xs mt-2">{percentage}% do total</p>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Status Overview */}
-              <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
-                <h2 className="text-xl font-bold text-white mb-6">Status dos Usuários</h2>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                  {['Ativo', 'Inativo', 'Cancelado'].map((status) => {
-                    const count = users.filter(u => u.status === status).length;
-                    return (
-                      <div key={status} className="bg-white/5 rounded-xl p-6">
-                        <h3 className="text-2xl font-bold text-white mb-1">{count}</h3>
-                        <p className={`text-sm font-medium ${getStatusColor(status).split(' ')[1]}`}>
-                          {status}
+                        <p className="text-gray-400 text-xs mt-2">
+                          {stats.totalUsers > 0 ? ((stats.premiumUsers / stats.totalUsers) * 100).toFixed(1) : 0}% do total
                         </p>
                       </div>
-                    );
-                  })}
+
+                      <div className="bg-white/5 rounded-xl p-6">
+                        <div className="w-12 h-12 bg-gradient-to-br from-gray-500 to-gray-600 rounded-xl flex items-center justify-center mb-4">
+                          <Users className="w-6 h-6 text-white" />
+                        </div>
+                        <h3 className="text-2xl font-bold text-white mb-1">{stats.totalUsers - stats.premiumUsers}</h3>
+                        <p className="text-gray-400 text-sm mb-2">Sem Plano</p>
+                        <div className="w-full bg-white/10 rounded-full h-2">
+                          <div
+                            className="h-2 rounded-full bg-gradient-to-r from-gray-500 to-gray-600"
+                            style={{ width: `${stats.totalUsers > 0 ? ((stats.totalUsers - stats.premiumUsers) / stats.totalUsers) * 100 : 0}%` }}
+                          ></div>
+                        </div>
+                        <p className="text-gray-400 text-xs mt-2">
+                          {stats.totalUsers > 0 ? (((stats.totalUsers - stats.premiumUsers) / stats.totalUsers) * 100).toFixed(1) : 0}% do total
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Status Overview */}
+                  <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
+                    <h2 className="text-xl font-bold text-white mb-6">Status dos Usuários</h2>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                      <div className="bg-white/5 rounded-xl p-6">
+                        <h3 className="text-2xl font-bold text-white mb-1">{stats.activeUsers}</h3>
+                        <p className="text-sm font-medium text-green-400">Ativos (Logados)</p>
+                      </div>
+                      <div className="bg-white/5 rounded-xl p-6">
+                        <h3 className="text-2xl font-bold text-white mb-1">{stats.totalUsers - stats.activeUsers}</h3>
+                        <p className="text-sm font-medium text-yellow-400">Inativos</p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
+              )}
+            </>
           )}
         </div>
       </main>
