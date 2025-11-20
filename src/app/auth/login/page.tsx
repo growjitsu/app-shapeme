@@ -19,21 +19,62 @@ export default function LoginPage() {
     setLoading(true);
     setError('');
 
+    console.log('🔐 Iniciando login...');
+    console.log('📧 Email:', email);
+
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+      // Verificar se as variáveis de ambiente estão configuradas
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+      if (!supabaseUrl || !supabaseKey) {
+        throw new Error('Configuração do Supabase não encontrada. Verifique as variáveis de ambiente.');
+      }
+
+      console.log('✅ Variáveis de ambiente OK');
+
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password: password,
       });
 
-      if (error) throw error;
+      console.log('📊 Resposta do Supabase:', { data, error: signInError });
+
+      if (signInError) {
+        console.error('❌ Erro no login:', signInError);
+        throw signInError;
+      }
 
       if (data.user) {
+        console.log('✅ Login bem-sucedido! Usuário:', data.user.id);
+        console.log('🔄 Redirecionando para /app...');
+        
+        // Forçar refresh da sessão
+        await supabase.auth.refreshSession();
+        
+        // Redirecionar
         router.push('/app');
+        router.refresh();
+      } else {
+        throw new Error('Nenhum usuário retornado após login');
       }
     } catch (err: any) {
-      setError(err.message || 'Erro ao fazer login. Verifique suas credenciais.');
+      console.error('❌ Erro capturado:', err);
+      
+      let errorMessage = 'Erro ao fazer login. Verifique suas credenciais.';
+      
+      if (err.message?.includes('Invalid login credentials')) {
+        errorMessage = 'Email ou senha incorretos. Tente novamente.';
+      } else if (err.message?.includes('Email not confirmed')) {
+        errorMessage = 'Por favor, confirme seu email antes de fazer login.';
+      } else if (err.message?.includes('Configuração do Supabase')) {
+        errorMessage = err.message;
+      }
+      
+      setError(errorMessage);
     } finally {
       setLoading(false);
+      console.log('🏁 Processo de login finalizado');
     }
   };
 
@@ -72,6 +113,7 @@ export default function LoginPage() {
                   className="w-full bg-white/5 border border-white/10 rounded-lg pl-11 pr-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                   placeholder="seu@email.com"
                   required
+                  disabled={loading}
                 />
               </div>
             </div>
@@ -90,11 +132,13 @@ export default function LoginPage() {
                   className="w-full bg-white/5 border border-white/10 rounded-lg pl-11 pr-12 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                   placeholder="••••••••"
                   required
+                  disabled={loading}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-300"
+                  disabled={loading}
                 >
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
