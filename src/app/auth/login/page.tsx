@@ -1,11 +1,12 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { Dumbbell, Mail, Lock, Eye, EyeOff } from 'lucide-react';
-import Link from 'next/link';
 
 export default function LoginPage() {
+  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -19,36 +20,22 @@ export default function LoginPage() {
 
     try {
       const { data, error: signInError } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password: password,
+        email,
+        password,
       });
 
-      if (signInError) {
-        // Tratamento de erros específicos
-        if (signInError.message.includes('Invalid login credentials')) {
-          setError('Email ou senha incorretos. Verifique suas credenciais e tente novamente.');
-        } else if (signInError.message.includes('Email not confirmed')) {
-          setError('Por favor, confirme seu email antes de fazer login.');
-        } else if (signInError.message.includes('User not found')) {
-          setError('Usuário não encontrado. Verifique seu email ou cadastre-se.');
-        } else {
-          setError('Erro ao fazer login. Tente novamente mais tarde.');
-        }
-        setLoading(false);
-        return;
-      }
+      if (signInError) throw signInError;
 
-      if (data.session && data.user) {
-        // Login bem-sucedido - redirecionar para o aplicativo
+      if (data.session) {
+        // Aguarda um momento para garantir que a sessão foi persistida
         await new Promise(resolve => setTimeout(resolve, 500));
-        window.location.href = '/app/meushapenovo';
-      } else {
-        setError('Erro inesperado ao fazer login. Tente novamente.');
-        setLoading(false);
+        
+        // Redireciona para o aplicativo
+        router.push('/meushapenovo');
       }
     } catch (err: any) {
-      console.error('Erro no login:', err);
-      setError('Erro ao conectar com o servidor. Verifique sua conexão e tente novamente.');
+      setError(err.message || 'Erro ao fazer login');
+    } finally {
       setLoading(false);
     }
   };
@@ -56,24 +43,19 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        {/* Logo */}
+        {/* Logo e Título */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-purple-600 to-pink-600 rounded-2xl mb-4">
             <Dumbbell className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-white mb-2">Meu Shape Novo</h1>
-          <p className="text-gray-400">Entre na sua conta para continuar</p>
+          <h1 className="text-3xl font-bold text-white mb-2">Bem-vindo de volta!</h1>
+          <p className="text-gray-400">Entre para continuar sua jornada</p>
         </div>
 
-        {/* Login Form */}
+        {/* Formulário de Login */}
         <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-8">
           <form onSubmit={handleLogin} className="space-y-6">
-            {error && (
-              <div className="bg-red-500/10 border border-red-500/50 rounded-lg p-4">
-                <p className="text-red-400 text-sm">{error}</p>
-              </div>
-            )}
-
+            {/* Email */}
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-2">
                 Email
@@ -85,14 +67,14 @@ export default function LoginPage() {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-lg pl-11 pr-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  className="w-full bg-white/5 border border-white/10 rounded-lg pl-11 pr-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
                   placeholder="seu@email.com"
                   required
-                  disabled={loading}
                 />
               </div>
             </div>
 
+            {/* Senha */}
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-2">
                 Senha
@@ -104,22 +86,32 @@ export default function LoginPage() {
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-lg pl-11 pr-12 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  className="w-full bg-white/5 border border-white/10 rounded-lg pl-11 pr-11 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
                   placeholder="••••••••"
                   required
-                  disabled={loading}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-300"
-                  disabled={loading}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
                 >
-                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  {showPassword ? (
+                    <EyeOff className="w-5 h-5" />
+                  ) : (
+                    <Eye className="w-5 h-5" />
+                  )}
                 </button>
               </div>
             </div>
 
+            {/* Erro */}
+            {error && (
+              <div className="bg-red-500/10 border border-red-500/50 rounded-lg p-3">
+                <p className="text-red-400 text-sm">{error}</p>
+              </div>
+            )}
+
+            {/* Botão de Login */}
             <button
               type="submit"
               disabled={loading}
@@ -129,12 +121,16 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <div className="mt-6 text-center">
-            <p className="text-gray-400 text-sm">
+          {/* Links Adicionais */}
+          <div className="mt-6 text-center space-y-2">
+            <a href="#" className="text-sm text-purple-400 hover:text-purple-300 transition-colors">
+              Esqueceu sua senha?
+            </a>
+            <p className="text-sm text-gray-400">
               Não tem uma conta?{' '}
-              <Link href="/auth/signup" className="text-purple-400 hover:text-purple-300 font-semibold">
+              <a href="#" className="text-purple-400 hover:text-purple-300 transition-colors">
                 Cadastre-se
-              </Link>
+              </a>
             </p>
           </div>
         </div>
