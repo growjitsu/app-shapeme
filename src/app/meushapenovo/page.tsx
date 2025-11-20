@@ -16,9 +16,9 @@ import {
   Plus,
   ChevronRight,
   Activity,
-  Edit,
   Save,
-  X
+  X,
+  Upload
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
@@ -74,6 +74,10 @@ export default function AppPage() {
   const [newWeightNote, setNewWeightNote] = useState('');
   const [newGoalWeight, setNewGoalWeight] = useState('');
   const [newGoalType, setNewGoalType] = useState<'lose' | 'gain'>('lose');
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [photoNote, setPhotoNote] = useState('');
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   useEffect(() => {
     checkAuth();
@@ -90,7 +94,6 @@ export default function AppPage() {
 
       setUser(session.user);
       
-      // Tenta carregar dados do usuário, mas não trava se falhar
       try {
         const { data: userDataResult } = await supabase
           .from('users')
@@ -101,7 +104,6 @@ export default function AppPage() {
         if (userDataResult) {
           setUserData(userDataResult);
         } else {
-          // Usa dados básicos do auth se não houver na tabela users
           setUserData({
             id: session.user.id,
             email: session.user.email,
@@ -110,8 +112,6 @@ export default function AppPage() {
           });
         }
       } catch (error) {
-        console.log('Tabela users não encontrada, usando dados básicos');
-        // Usa dados básicos do auth
         setUserData({
           id: session.user.id,
           email: session.user.email,
@@ -120,7 +120,6 @@ export default function AppPage() {
         });
       }
 
-      // Tenta carregar dados adicionais
       await loadData(session.user.id);
     } catch (error) {
       console.error('Erro na autenticação:', error);
@@ -132,7 +131,6 @@ export default function AppPage() {
 
   const loadData = async (userId: string) => {
     try {
-      // Carrega entradas de peso (não trava se falhar)
       try {
         const { data: weights } = await supabase
           .from('weight_entries')
@@ -145,7 +143,6 @@ export default function AppPage() {
         console.log('Tabela weight_entries não encontrada');
       }
 
-      // Carrega fotos de progresso (não trava se falhar)
       try {
         const { data: photos } = await supabase
           .from('progress_photos')
@@ -158,7 +155,6 @@ export default function AppPage() {
         console.log('Tabela progress_photos não encontrada');
       }
 
-      // Carrega meta (não trava se falhar)
       try {
         const { data: goalData } = await supabase
           .from('goals')
@@ -171,7 +167,6 @@ export default function AppPage() {
         console.log('Tabela goals não encontrada');
       }
 
-      // Gera conquistas baseadas no progresso
       generateAchievements(weightEntries, progressPhotos);
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
@@ -182,38 +177,59 @@ export default function AppPage() {
     const achievementsList: Achievement[] = [
       {
         id: '1',
-        title: 'Primeira Pesagem',
+        title: 'Cadastro Concluído',
+        description: 'Bem-vindo ao Meu Shape Novo!',
+        icon: '🎉',
+        unlocked: true,
+      },
+      {
+        id: '2',
+        title: 'Primeiro Dia Completo',
+        description: 'Você acessou o app pela primeira vez',
+        icon: '🌟',
+        unlocked: true,
+      },
+      {
+        id: '3',
+        title: 'Primeiro Registro de Peso',
         description: 'Registrou seu primeiro peso',
         icon: '⚖️',
         unlocked: weights.length > 0,
       },
       {
-        id: '2',
-        title: 'Primeira Foto',
+        id: '4',
+        title: 'Primeira Foto Enviada',
         description: 'Adicionou sua primeira foto de progresso',
         icon: '📸',
         unlocked: photos.length > 0,
       },
       {
-        id: '3',
+        id: '5',
         title: 'Consistente',
         description: 'Registrou peso por 7 dias seguidos',
         icon: '🔥',
         unlocked: weights.length >= 7,
       },
       {
-        id: '4',
+        id: '6',
         title: 'Transformação Visível',
         description: 'Adicionou 5 fotos de progresso',
         icon: '✨',
         unlocked: photos.length >= 5,
       },
       {
-        id: '5',
+        id: '7',
         title: 'Dedicado',
         description: 'Registrou peso por 30 dias',
         icon: '💪',
         unlocked: weights.length >= 30,
+      },
+      {
+        id: '8',
+        title: 'Meta Alcançada',
+        description: 'Atingiu seu objetivo de peso',
+        icon: '🏆',
+        unlocked: false,
       },
     ];
 
@@ -241,6 +257,7 @@ export default function AppPage() {
       setNewWeightNote('');
       setShowWeightModal(false);
       loadData(user.id);
+      alert('Peso registrado com sucesso!');
     } catch (error) {
       console.error('Erro ao adicionar peso:', error);
       alert('Erro ao salvar peso. Verifique se as tabelas do banco estão configuradas.');
@@ -271,9 +288,74 @@ export default function AppPage() {
       setNewGoalWeight('');
       setShowGoalModal(false);
       loadData(user.id);
+      alert('Meta definida com sucesso!');
     } catch (error) {
       console.error('Erro ao adicionar meta:', error);
       alert('Erro ao salvar meta. Verifique se as tabelas do banco estão configuradas.');
+    }
+  };
+
+  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setPhotoFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPhotoPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleUploadPhoto = async () => {
+    if (!user || !photoFile) return;
+
+    setUploadingPhoto(true);
+
+    try {
+      // Upload da foto para o storage
+      const fileExt = photoFile.name.split('.').pop();
+      const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+      
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('progress-photos')
+        .upload(fileName, photoFile);
+
+      if (uploadError) throw uploadError;
+
+      // Obter URL pública da foto
+      const { data: { publicUrl } } = supabase.storage
+        .from('progress-photos')
+        .getPublicUrl(fileName);
+
+      // Salvar registro no banco
+      const currentWeight = weightEntries[0]?.weight || 0;
+      
+      const { error: dbError } = await supabase
+        .from('progress_photos')
+        .insert([
+          {
+            user_id: user.id,
+            date: new Date().toISOString().split('T')[0],
+            image_url: publicUrl,
+            weight: currentWeight,
+            note: photoNote || null,
+          },
+        ]);
+
+      if (dbError) throw dbError;
+
+      setPhotoFile(null);
+      setPhotoPreview(null);
+      setPhotoNote('');
+      setShowPhotoModal(false);
+      loadData(user.id);
+      alert('Foto adicionada com sucesso!');
+    } catch (error) {
+      console.error('Erro ao fazer upload da foto:', error);
+      alert('Erro ao adicionar foto. Verifique as configurações do storage.');
+    } finally {
+      setUploadingPhoto(false);
     }
   };
 
@@ -309,7 +391,6 @@ export default function AppPage() {
     : 0;
   const workoutsCompleted = Math.floor(daysActive * 0.8);
 
-  // Dados para o gráfico
   const chartData = weightEntries
     .slice(0, 30)
     .reverse()
@@ -335,7 +416,10 @@ export default function AppPage() {
             </div>
             
             <div className="flex items-center gap-4">
-              <button className="p-2 hover:bg-white/10 rounded-lg transition-colors">
+              <button 
+                onClick={() => router.push('/meushapenovo/configuracoes')}
+                className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+              >
                 <Settings className="w-5 h-5 text-gray-400" />
               </button>
               <button onClick={handleSignOut} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
@@ -442,7 +526,6 @@ export default function AppPage() {
                     </div>
                   )}
                   
-                  {/* Progress Bar */}
                   {goal && (
                     <div className="pt-4">
                       <div className="w-full bg-slate-800 rounded-full h-3">
@@ -459,7 +542,6 @@ export default function AppPage() {
                     </div>
                   )}
 
-                  {/* Últimas pesagens */}
                   <div className="pt-4 border-t border-white/10">
                     <h4 className="text-sm font-semibold text-gray-300 mb-3">Últimas Pesagens</h4>
                     <div className="space-y-2 max-h-40 overflow-y-auto">
@@ -518,7 +600,10 @@ export default function AppPage() {
                 <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
               </button>
 
-              <button className="w-full bg-white/10 border border-white/20 text-white p-4 rounded-xl font-semibold hover:bg-white/20 transition-all flex items-center justify-between group">
+              <button 
+                onClick={() => router.push('/meushapenovo/treinos')}
+                className="w-full bg-white/10 border border-white/20 text-white p-4 rounded-xl font-semibold hover:bg-white/20 transition-all flex items-center justify-between group"
+              >
                 <span className="flex items-center gap-3">
                   <Dumbbell className="w-5 h-5" />
                   Ver Treinos
@@ -526,7 +611,10 @@ export default function AppPage() {
                 <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
               </button>
 
-              <button className="w-full bg-white/10 border border-white/20 text-white p-4 rounded-xl font-semibold hover:bg-white/20 transition-all flex items-center justify-between group">
+              <button 
+                onClick={() => router.push('/meushapenovo/plano-alimentar')}
+                className="w-full bg-white/10 border border-white/20 text-white p-4 rounded-xl font-semibold hover:bg-white/20 transition-all flex items-center justify-between group"
+              >
                 <span className="flex items-center gap-3">
                   <Apple className="w-5 h-5" />
                   Plano Alimentar
@@ -728,21 +816,74 @@ export default function AppPage() {
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-xl font-bold text-white">Adicionar Foto</h3>
               <button 
-                onClick={() => setShowPhotoModal(false)}
+                onClick={() => {
+                  setShowPhotoModal(false);
+                  setPhotoFile(null);
+                  setPhotoPreview(null);
+                  setPhotoNote('');
+                }}
                 className="text-gray-400 hover:text-white"
               >
                 <X className="w-6 h-6" />
               </button>
             </div>
             
-            <div className="text-center py-8">
-              <Camera className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-400 mb-4">
-                Funcionalidade de upload de fotos em desenvolvimento
-              </p>
-              <p className="text-sm text-gray-500">
-                Em breve você poderá adicionar suas fotos de progresso diretamente pelo app
-              </p>
+            <div className="space-y-4">
+              {!photoPreview ? (
+                <label className="flex flex-col items-center justify-center w-full h-64 border-2 border-dashed border-white/20 rounded-xl cursor-pointer hover:bg-white/5 transition-all">
+                  <Upload className="w-12 h-12 text-gray-400 mb-3" />
+                  <p className="text-gray-400 mb-2">Clique para selecionar uma foto</p>
+                  <p className="text-sm text-gray-500">ou arraste e solte aqui</p>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handlePhotoSelect}
+                    className="hidden"
+                  />
+                </label>
+              ) : (
+                <div className="relative">
+                  <img 
+                    src={photoPreview} 
+                    alt="Preview" 
+                    className="w-full h-64 object-cover rounded-xl"
+                  />
+                  <button
+                    onClick={() => {
+                      setPhotoFile(null);
+                      setPhotoPreview(null);
+                    }}
+                    className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-lg hover:bg-red-600 transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+
+              {photoPreview && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Observação (opcional)
+                    </label>
+                    <textarea
+                      value={photoNote}
+                      onChange={(e) => setPhotoNote(e.target.value)}
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      placeholder="Como você está se sentindo?"
+                      rows={2}
+                    />
+                  </div>
+
+                  <button
+                    onClick={handleUploadPhoto}
+                    disabled={uploadingPhoto}
+                    className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white py-3 rounded-lg font-semibold hover:shadow-lg hover:shadow-purple-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {uploadingPhoto ? 'Enviando...' : 'Salvar Foto'}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
