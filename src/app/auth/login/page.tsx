@@ -38,8 +38,10 @@ export default function LoginPage() {
         return;
       }
 
-      if (data.user) {
-        // Login bem-sucedido - usar window.location para navegação completa
+      if (data.session && data.user) {
+        // Login bem-sucedido - aguardar um momento para garantir que a sessão foi salva
+        // e então redirecionar
+        await new Promise(resolve => setTimeout(resolve, 500));
         window.location.href = '/app';
       } else {
         setError('Erro inesperado ao fazer login. Tente novamente.');
