@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
 import { 
@@ -56,6 +57,7 @@ interface Achievement {
 }
 
 export default function AppPage() {
+  const router = useRouter();
   const { user, userData, subscription, loading: authLoading, signOut } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [weightEntries, setWeightEntries] = useState<WeightEntry[]>([]);
@@ -72,6 +74,13 @@ export default function AppPage() {
   const [newWeightNote, setNewWeightNote] = useState('');
   const [newGoalWeight, setNewGoalWeight] = useState('');
   const [newGoalType, setNewGoalType] = useState<'lose' | 'gain'>('lose');
+
+  // Redireciona para login se não estiver autenticado
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/app');
+    }
+  }, [user, authLoading, router]);
 
   useEffect(() => {
     if (user && !authLoading) {
@@ -225,7 +234,11 @@ export default function AppPage() {
   }
 
   if (!user || !userData) {
-    return null;
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
+        <div className="text-white text-xl">Redirecionando...</div>
+      </div>
+    );
   }
 
   const currentWeight = weightEntries[0]?.weight || 0;
