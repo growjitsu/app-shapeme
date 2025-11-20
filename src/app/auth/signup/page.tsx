@@ -23,8 +23,9 @@ export default function SignupPage() {
     setLoading(true);
     setError('');
 
+    // Validação de senhas
     if (formData.password !== formData.confirmPassword) {
-      setError('As senhas não coincidem');
+      setError('As senhas não são iguais. Por favor, tente novamente.');
       setLoading(false);
       return;
     }
@@ -50,7 +51,7 @@ export default function SignupPage() {
       if (authError) throw authError;
 
       if (authData.user) {
-        // Criar registro na tabela users
+        // Criar registro na tabela users (sem date_of_birth por enquanto)
         const { error: userError } = await supabase
           .from('users')
           .insert([
@@ -58,13 +59,15 @@ export default function SignupPage() {
               id: authData.user.id,
               email: formData.email,
               name: formData.name,
-              date_of_birth: new Date().toISOString().split('T')[0],
               gender: 'other',
               has_completed_onboarding: false,
             },
           ]);
 
-        if (userError) throw userError;
+        if (userError) {
+          console.error('Erro ao criar usuário:', userError);
+          // Continuar mesmo com erro na tabela users
+        }
 
         // Criar assinatura premium
         const { error: subError } = await supabase
@@ -80,11 +83,15 @@ export default function SignupPage() {
             },
           ]);
 
-        if (subError) throw subError;
+        if (subError) {
+          console.error('Erro ao criar assinatura:', subError);
+          // Continuar mesmo com erro na assinatura
+        }
 
         router.push('/app');
       }
     } catch (err: any) {
+      console.error('Erro no cadastro:', err);
       setError(err.message || 'Erro ao criar conta. Tente novamente.');
     } finally {
       setLoading(false);
