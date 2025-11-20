@@ -19,62 +19,39 @@ export default function LoginPage() {
     setLoading(true);
     setError('');
 
-    console.log('🔐 Iniciando login...');
-    console.log('📧 Email:', email);
-
     try {
-      // Verificar se as variáveis de ambiente estão configuradas
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-      if (!supabaseUrl || !supabaseKey) {
-        throw new Error('Configuração do Supabase não encontrada. Verifique as variáveis de ambiente.');
-      }
-
-      console.log('✅ Variáveis de ambiente OK');
-
       const { data, error: signInError } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password: password,
       });
 
-      console.log('📊 Resposta do Supabase:', { data, error: signInError });
-
       if (signInError) {
-        console.error('❌ Erro no login:', signInError);
-        throw signInError;
+        // Tratamento de erros específicos
+        if (signInError.message.includes('Invalid login credentials')) {
+          setError('Email ou senha incorretos. Verifique suas credenciais e tente novamente.');
+        } else if (signInError.message.includes('Email not confirmed')) {
+          setError('Por favor, confirme seu email antes de fazer login.');
+        } else if (signInError.message.includes('User not found')) {
+          setError('Usuário não encontrado. Verifique seu email ou cadastre-se.');
+        } else {
+          setError('Erro ao fazer login. Tente novamente mais tarde.');
+        }
+        setLoading(false);
+        return;
       }
 
       if (data.user) {
-        console.log('✅ Login bem-sucedido! Usuário:', data.user.id);
-        console.log('🔄 Redirecionando para /app...');
-        
-        // Forçar refresh da sessão
-        await supabase.auth.refreshSession();
-        
-        // Redirecionar
+        // Login bem-sucedido - redirecionar para o app
         router.push('/app');
         router.refresh();
       } else {
-        throw new Error('Nenhum usuário retornado após login');
+        setError('Erro inesperado ao fazer login. Tente novamente.');
+        setLoading(false);
       }
     } catch (err: any) {
-      console.error('❌ Erro capturado:', err);
-      
-      let errorMessage = 'Erro ao fazer login. Verifique suas credenciais.';
-      
-      if (err.message?.includes('Invalid login credentials')) {
-        errorMessage = 'Email ou senha incorretos. Tente novamente.';
-      } else if (err.message?.includes('Email not confirmed')) {
-        errorMessage = 'Por favor, confirme seu email antes de fazer login.';
-      } else if (err.message?.includes('Configuração do Supabase')) {
-        errorMessage = err.message;
-      }
-      
-      setError(errorMessage);
-    } finally {
+      console.error('Erro no login:', err);
+      setError('Erro ao conectar com o servidor. Verifique sua conexão e tente novamente.');
       setLoading(false);
-      console.log('🏁 Processo de login finalizado');
     }
   };
 
