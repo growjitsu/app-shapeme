@@ -1,13 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { Dumbbell, Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import Link from 'next/link';
 
 export default function LoginPage() {
-  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -41,9 +39,8 @@ export default function LoginPage() {
       }
 
       if (data.user) {
-        // Login bem-sucedido - redirecionar para o app
-        router.push('/app');
-        router.refresh();
+        // Login bem-sucedido - usar window.location para navegação completa
+        window.location.href = '/app';
       } else {
         setError('Erro inesperado ao fazer login. Tente novamente.');
         setLoading(false);
