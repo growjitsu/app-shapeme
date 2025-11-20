@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Configuração do basePath para o subdiretório
+  basePath: '/app/meushapenovo',
+  
   devIndicators: false, // Remove widget de desenvolvimento Next.js
   
   // Ignorar erros durante build (compatibilidade Vercel)
