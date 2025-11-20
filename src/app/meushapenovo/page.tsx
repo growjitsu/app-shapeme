@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
 import { 
   TrendingUp, 
@@ -58,13 +57,14 @@ interface Achievement {
 
 export default function AppPage() {
   const router = useRouter();
-  const { user, userData, subscription, loading: authLoading, signOut } = useAuth();
+  const [user, setUser] = useState<any>(null);
+  const [userData, setUserData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [weightEntries, setWeightEntries] = useState<WeightEntry[]>([]);
   const [progressPhotos, setProgressPhotos] = useState<ProgressPhoto[]>([]);
   const [goal, setGoal] = useState<Goal | null>(null);
   const [achievements, setAchievements] = useState<Achievement[]>([]);
-  const [loading, setLoading] = useState(true);
   
   // Estados para modais
   const [showWeightModal, setShowWeightModal] = useState(false);
@@ -75,56 +75,106 @@ export default function AppPage() {
   const [newGoalWeight, setNewGoalWeight] = useState('');
   const [newGoalType, setNewGoalType] = useState<'lose' | 'gain'>('lose');
 
-  // Redireciona para login se não estiver autenticado
   useEffect(() => {
-    if (!authLoading && !user) {
-      router.push('/app');
-    }
-  }, [user, authLoading, router]);
+    checkAuth();
+  }, []);
 
-  useEffect(() => {
-    if (user && !authLoading) {
-      loadData();
-    }
-  }, [user, authLoading]);
-
-  const loadData = async () => {
-    if (!user) return;
-
+  const checkAuth = async () => {
     try {
-      // Carrega entradas de peso
-      const { data: weights } = await supabase
-        .from('weight_entries')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('date', { ascending: false });
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        router.push('/app');
+        return;
+      }
 
-      if (weights) setWeightEntries(weights);
+      setUser(session.user);
+      
+      // Tenta carregar dados do usuário, mas não trava se falhar
+      try {
+        const { data: userDataResult } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
 
-      // Carrega fotos de progresso
-      const { data: photos } = await supabase
-        .from('progress_photos')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('date', { ascending: false });
+        if (userDataResult) {
+          setUserData(userDataResult);
+        } else {
+          // Usa dados básicos do auth se não houver na tabela users
+          setUserData({
+            id: session.user.id,
+            email: session.user.email,
+            name: session.user.email?.split('@')[0] || 'Usuário',
+            created_at: session.user.created_at
+          });
+        }
+      } catch (error) {
+        console.log('Tabela users não encontrada, usando dados básicos');
+        // Usa dados básicos do auth
+        setUserData({
+          id: session.user.id,
+          email: session.user.email,
+          name: session.user.email?.split('@')[0] || 'Usuário',
+          created_at: session.user.created_at
+        });
+      }
 
-      if (photos) setProgressPhotos(photos);
-
-      // Carrega meta
-      const { data: goalData } = await supabase
-        .from('goals')
-        .select('*')
-        .eq('user_id', user.id)
-        .single();
-
-      if (goalData) setGoal(goalData);
-
-      // Gera conquistas baseadas no progresso
-      generateAchievements(weights || [], photos || []);
+      // Tenta carregar dados adicionais
+      await loadData(session.user.id);
     } catch (error) {
-      console.error('Erro ao carregar dados:', error);
+      console.error('Erro na autenticação:', error);
+      router.push('/app');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadData = async (userId: string) => {
+    try {
+      // Carrega entradas de peso (não trava se falhar)
+      try {
+        const { data: weights } = await supabase
+          .from('weight_entries')
+          .select('*')
+          .eq('user_id', userId)
+          .order('date', { ascending: false });
+
+        if (weights) setWeightEntries(weights);
+      } catch (error) {
+        console.log('Tabela weight_entries não encontrada');
+      }
+
+      // Carrega fotos de progresso (não trava se falhar)
+      try {
+        const { data: photos } = await supabase
+          .from('progress_photos')
+          .select('*')
+          .eq('user_id', userId)
+          .order('date', { ascending: false });
+
+        if (photos) setProgressPhotos(photos);
+      } catch (error) {
+        console.log('Tabela progress_photos não encontrada');
+      }
+
+      // Carrega meta (não trava se falhar)
+      try {
+        const { data: goalData } = await supabase
+          .from('goals')
+          .select('*')
+          .eq('user_id', userId)
+          .single();
+
+        if (goalData) setGoal(goalData);
+      } catch (error) {
+        console.log('Tabela goals não encontrada');
+      }
+
+      // Gera conquistas baseadas no progresso
+      generateAchievements(weightEntries, progressPhotos);
+    } catch (error) {
+      console.error('Erro ao carregar dados:', error);
     }
   };
 
@@ -190,9 +240,10 @@ export default function AppPage() {
       setNewWeight('');
       setNewWeightNote('');
       setShowWeightModal(false);
-      loadData();
+      loadData(user.id);
     } catch (error) {
       console.error('Erro ao adicionar peso:', error);
+      alert('Erro ao salvar peso. Verifique se as tabelas do banco estão configuradas.');
     }
   };
 
@@ -219,24 +270,33 @@ export default function AppPage() {
 
       setNewGoalWeight('');
       setShowGoalModal(false);
-      loadData();
+      loadData(user.id);
     } catch (error) {
       console.error('Erro ao adicionar meta:', error);
+      alert('Erro ao salvar meta. Verifique se as tabelas do banco estão configuradas.');
     }
   };
 
-  if (authLoading || loading) {
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    router.push('/app');
+  };
+
+  if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
-        <div className="text-white text-xl">Carregando...</div>
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <div className="text-white text-xl">Carregando seu aplicativo...</div>
+        </div>
       </div>
     );
   }
 
-  if (!user || !userData) {
+  if (!user) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
-        <div className="text-white text-xl">Redirecionando...</div>
+        <div className="text-white text-xl">Redirecionando para login...</div>
       </div>
     );
   }
@@ -244,8 +304,10 @@ export default function AppPage() {
   const currentWeight = weightEntries[0]?.weight || 0;
   const startWeight = weightEntries[weightEntries.length - 1]?.weight || currentWeight;
   const weightLost = startWeight - currentWeight;
-  const daysActive = Math.floor((Date.now() - new Date(userData.created_at).getTime()) / (1000 * 60 * 60 * 24));
-  const workoutsCompleted = Math.floor(daysActive * 0.8); // Estimativa
+  const daysActive = userData?.created_at 
+    ? Math.floor((Date.now() - new Date(userData.created_at).getTime()) / (1000 * 60 * 60 * 24))
+    : 0;
+  const workoutsCompleted = Math.floor(daysActive * 0.8);
 
   // Dados para o gráfico
   const chartData = weightEntries
@@ -255,8 +317,6 @@ export default function AppPage() {
       date: new Date(entry.date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
       peso: entry.weight,
     }));
-
-  const planType = subscription?.plan_type === 'top' ? 'Premium Completo' : 'Premium';
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
@@ -270,7 +330,7 @@ export default function AppPage() {
               </div>
               <div>
                 <h1 className="text-xl font-bold text-white">Meu Shape Novo</h1>
-                <p className="text-xs text-gray-400">{planType}</p>
+                <p className="text-xs text-gray-400">Premium</p>
               </div>
             </div>
             
@@ -278,7 +338,7 @@ export default function AppPage() {
               <button className="p-2 hover:bg-white/10 rounded-lg transition-colors">
                 <Settings className="w-5 h-5 text-gray-400" />
               </button>
-              <button onClick={signOut} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
+              <button onClick={handleSignOut} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
                 <LogOut className="w-5 h-5 text-gray-400" />
               </button>
             </div>
@@ -291,7 +351,7 @@ export default function AppPage() {
         {/* Welcome Section */}
         <div className="mb-8">
           <h2 className="text-3xl font-bold text-white mb-2">
-            Olá, {userData.name}! 👋
+            Olá, {userData?.name || 'Usuário'}! 👋
           </h2>
           <p className="text-gray-400">
             Bem-vindo de volta! Continue sua jornada de transformação.
@@ -306,7 +366,7 @@ export default function AppPage() {
                 <TrendingUp className="w-6 h-6 text-white" />
               </div>
               <span className="text-2xl font-bold text-green-400">
-                {weightLost > 0 ? `-${weightLost.toFixed(1)}kg` : `+${Math.abs(weightLost).toFixed(1)}kg`}
+                {weightLost > 0 ? `-${weightLost.toFixed(1)}kg` : weightLost < 0 ? `+${Math.abs(weightLost).toFixed(1)}kg` : '0kg'}
               </span>
             </div>
             <h3 className="text-gray-400 text-sm font-medium">Peso Perdido</h3>
@@ -365,52 +425,69 @@ export default function AppPage() {
             </div>
             
             <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <span className="text-gray-400">Peso Inicial</span>
-                <span className="text-white font-bold">{startWeight.toFixed(1)}kg</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-gray-400">Peso Atual</span>
-                <span className="text-green-400 font-bold">{currentWeight.toFixed(1)}kg</span>
-              </div>
-              {goal && (
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-400">Meta</span>
-                  <span className="text-purple-400 font-bold">{goal.target_weight.toFixed(1)}kg</span>
-                </div>
-              )}
-              
-              {/* Progress Bar */}
-              {goal && (
-                <div className="pt-4">
-                  <div className="w-full bg-slate-800 rounded-full h-3">
-                    <div 
-                      className="bg-gradient-to-r from-purple-600 to-pink-600 h-3 rounded-full transition-all duration-500"
-                      style={{ 
-                        width: `${Math.min(100, ((startWeight - currentWeight) / (startWeight - goal.target_weight) * 100))}%` 
-                      }}
-                    />
+              {weightEntries.length > 0 ? (
+                <>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-400">Peso Inicial</span>
+                    <span className="text-white font-bold">{startWeight.toFixed(1)}kg</span>
                   </div>
-                  <p className="text-center text-sm text-gray-400 mt-2">
-                    {Math.min(100, ((startWeight - currentWeight) / (startWeight - goal.target_weight) * 100)).toFixed(0)}% da meta alcançada
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-400">Peso Atual</span>
+                    <span className="text-green-400 font-bold">{currentWeight.toFixed(1)}kg</span>
+                  </div>
+                  {goal && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-400">Meta</span>
+                      <span className="text-purple-400 font-bold">{goal.target_weight.toFixed(1)}kg</span>
+                    </div>
+                  )}
+                  
+                  {/* Progress Bar */}
+                  {goal && (
+                    <div className="pt-4">
+                      <div className="w-full bg-slate-800 rounded-full h-3">
+                        <div 
+                          className="bg-gradient-to-r from-purple-600 to-pink-600 h-3 rounded-full transition-all duration-500"
+                          style={{ 
+                            width: `${Math.min(100, Math.max(0, ((startWeight - currentWeight) / (startWeight - goal.target_weight) * 100)))}%` 
+                          }}
+                        />
+                      </div>
+                      <p className="text-center text-sm text-gray-400 mt-2">
+                        {Math.min(100, Math.max(0, ((startWeight - currentWeight) / (startWeight - goal.target_weight) * 100))).toFixed(0)}% da meta alcançada
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Últimas pesagens */}
+                  <div className="pt-4 border-t border-white/10">
+                    <h4 className="text-sm font-semibold text-gray-300 mb-3">Últimas Pesagens</h4>
+                    <div className="space-y-2 max-h-40 overflow-y-auto">
+                      {weightEntries.slice(0, 5).map((entry) => (
+                        <div key={entry.id} className="flex justify-between items-center text-sm">
+                          <span className="text-gray-400">
+                            {new Date(entry.date).toLocaleDateString('pt-BR')}
+                          </span>
+                          <span className="text-white font-medium">{entry.weight.toFixed(1)}kg</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="text-center py-8">
+                  <TrendingUp className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+                  <p className="text-gray-400 mb-4">
+                    Comece registrando seu peso atual
                   </p>
+                  <button 
+                    onClick={() => setShowWeightModal(true)}
+                    className="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-6 py-2 rounded-lg font-semibold hover:shadow-lg hover:shadow-purple-500/50 transition-all"
+                  >
+                    Registrar Primeiro Peso
+                  </button>
                 </div>
               )}
-
-              {/* Últimas pesagens */}
-              <div className="pt-4 border-t border-white/10">
-                <h4 className="text-sm font-semibold text-gray-300 mb-3">Últimas Pesagens</h4>
-                <div className="space-y-2 max-h-40 overflow-y-auto">
-                  {weightEntries.slice(0, 5).map((entry) => (
-                    <div key={entry.id} className="flex justify-between items-center text-sm">
-                      <span className="text-gray-400">
-                        {new Date(entry.date).toLocaleDateString('pt-BR')}
-                      </span>
-                      <span className="text-white font-medium">{entry.weight.toFixed(1)}kg</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
             </div>
           </div>
 
@@ -728,11 +805,13 @@ export default function AppPage() {
                 />
               </div>
 
-              <div className="bg-blue-500/10 border border-blue-500/50 rounded-lg p-4">
-                <p className="text-blue-400 text-sm">
-                  Seu peso atual: <strong>{currentWeight.toFixed(1)}kg</strong>
-                </p>
-              </div>
+              {currentWeight > 0 && (
+                <div className="bg-blue-500/10 border border-blue-500/50 rounded-lg p-4">
+                  <p className="text-blue-400 text-sm">
+                    Seu peso atual: <strong>{currentWeight.toFixed(1)}kg</strong>
+                  </p>
+                </div>
+              )}
 
               <button
                 onClick={handleAddGoal}
