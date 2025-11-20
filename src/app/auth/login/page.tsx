@@ -39,9 +39,9 @@ export default function LoginPage() {
       }
 
       if (data.session && data.user) {
-        // Login bem-sucedido - redirecionar para o domínio correto
+        // Login bem-sucedido - redirecionar para o aplicativo
         await new Promise(resolve => setTimeout(resolve, 500));
-        window.location.href = 'https://meushapenovo.cmbdigital.com.br/app/meushapenovo/app';
+        window.location.href = '/app/meushapenovo';
       } else {
         setError('Erro inesperado ao fazer login. Tente novamente.');
         setLoading(false);
