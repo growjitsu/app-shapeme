@@ -240,27 +240,57 @@ export default function AppPage() {
     if (!user || !newWeight) return;
 
     try {
-      const { error } = await supabase
-        .from('weight_entries')
-        .insert([
-          {
-            user_id: user.id,
-            date: new Date().toISOString().split('T')[0],
-            weight: parseFloat(newWeight),
-            note: newWeightNote || null,
-          },
-        ]);
+      // Obter token de autenticação
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        alert('Sessão expirada. Faça login novamente.');
+        router.push('/app');
+        return;
+      }
 
-      if (error) throw error;
+      console.log('📤 Enviando peso para API:', {
+        weight: parseFloat(newWeight),
+        note: newWeightNote || null
+      });
+
+      // Chamar API route
+      const response = await fetch('/api/weight', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          weight: parseFloat(newWeight),
+          note: newWeightNote || null
+        })
+      });
+
+      const result = await response.json();
+
+      console.log('📥 Resposta da API:', result);
+
+      if (!response.ok) {
+        // Se for erro de tabela não existente, mostrar SQL necessário
+        if (result.sqlNeeded) {
+          console.error('❌ Tabela não existe. SQL necessário:');
+          console.error(result.sqlNeeded);
+          alert(`Erro: ${result.error}\n\nVeja o console do navegador para o SQL necessário.`);
+        } else {
+          alert(`Erro: ${result.error}\n${result.details || result.message || ''}`);
+        }
+        return;
+      }
 
       setNewWeight('');
       setNewWeightNote('');
       setShowWeightModal(false);
       loadData(user.id);
       alert('Peso registrado com sucesso!');
-    } catch (error) {
-      console.error('Erro ao adicionar peso:', error);
-      alert('Erro ao salvar peso. Verifique se as tabelas do banco estão configuradas.');
+    } catch (error: any) {
+      console.error('💥 Erro ao adicionar peso:', error);
+      alert(`Erro ao salvar peso: ${error.message}`);
     }
   };
 
