@@ -88,7 +88,11 @@ export default function SignupPage() {
           // Continuar mesmo com erro na assinatura
         }
 
-        router.push('/app');
+        // Aguarda um momento para garantir que a sessão foi persistida
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Redireciona para o aplicativo correto
+        router.push('/meushapenovo');
       }
     } catch (err: any) {
       console.error('Erro no cadastro:', err);
