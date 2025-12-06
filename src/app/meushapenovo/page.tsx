@@ -16,7 +16,6 @@ import {
   Plus,
   ChevronRight,
   Activity,
-  Save,
   X,
   Upload
 } from 'lucide-react';
@@ -78,6 +77,7 @@ export default function AppPage() {
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [photoNote, setPhotoNote] = useState('');
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [savingWeight, setSavingWeight] = useState(false);
 
   useEffect(() => {
     checkAuth();
@@ -237,60 +237,42 @@ export default function AppPage() {
   };
 
   const handleAddWeight = async () => {
-    if (!user || !newWeight) return;
+    if (!user || !newWeight) {
+      alert('Por favor, insira um peso válido');
+      return;
+    }
+
+    setSavingWeight(true);
 
     try {
-      // Obter token de autenticação
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session) {
-        alert('Sessão expirada. Faça login novamente.');
-        router.push('/app');
-        return;
-      }
+      const { data, error } = await supabase
+        .from('weight_entries')
+        .insert([
+          {
+            user_id: user.id,
+            date: new Date().toISOString().split('T')[0],
+            weight: parseFloat(newWeight),
+            note: newWeightNote || null,
+          },
+        ])
+        .select();
 
-      console.log('📤 Enviando peso para API:', {
-        weight: parseFloat(newWeight),
-        note: newWeightNote || null
-      });
-
-      // Chamar API route
-      const response = await fetch('/api/weight', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
-        },
-        body: JSON.stringify({
-          weight: parseFloat(newWeight),
-          note: newWeightNote || null
-        })
-      });
-
-      const result = await response.json();
-
-      console.log('📥 Resposta da API:', result);
-
-      if (!response.ok) {
-        // Se for erro de tabela não existente, mostrar SQL necessário
-        if (result.sqlNeeded) {
-          console.error('❌ Tabela não existe. SQL necessário:');
-          console.error(result.sqlNeeded);
-          alert(`Erro: ${result.error}\n\nVeja o console do navegador para o SQL necessário.`);
-        } else {
-          alert(`Erro: ${result.error}\n${result.details || result.message || ''}`);
-        }
+      if (error) {
+        console.error('Erro ao salvar peso:', error);
+        alert(`Erro: ${error.message}\n\nVerifique se executou o SQL de configuração do banco.`);
         return;
       }
 
       setNewWeight('');
       setNewWeightNote('');
       setShowWeightModal(false);
-      loadData(user.id);
-      alert('Peso registrado com sucesso!');
+      await loadData(user.id);
+      alert('✅ Peso registrado com sucesso!');
     } catch (error: any) {
-      console.error('💥 Erro ao adicionar peso:', error);
+      console.error('Erro ao adicionar peso:', error);
       alert(`Erro ao salvar peso: ${error.message}`);
+    } finally {
+      setSavingWeight(false);
     }
   };
 
@@ -328,6 +310,18 @@ export default function AppPage() {
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      // Validar tamanho (máx 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        alert('Foto muito grande! Máximo 5MB.');
+        return;
+      }
+
+      // Validar tipo
+      if (!file.type.startsWith('image/')) {
+        alert('Por favor, selecione uma imagem válida.');
+        return;
+      }
+
       setPhotoFile(file);
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -338,7 +332,10 @@ export default function AppPage() {
   };
 
   const handleUploadPhoto = async () => {
-    if (!user || !photoFile) return;
+    if (!user || !photoFile) {
+      alert('Por favor, selecione uma foto');
+      return;
+    }
 
     setUploadingPhoto(true);
 
@@ -347,11 +344,15 @@ export default function AppPage() {
       const fileExt = photoFile.name.split('.').pop();
       const fileName = `${user.id}/${Date.now()}.${fileExt}`;
       
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      const { error: uploadError } = await supabase.storage
         .from('progress-photos')
         .upload(fileName, photoFile);
 
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        console.error('Erro no upload:', uploadError);
+        alert(`Erro ao fazer upload: ${uploadError.message}\n\nVerifique se o bucket 'progress-photos' existe e está público.`);
+        return;
+      }
 
       // Obter URL pública da foto
       const { data: { publicUrl } } = supabase.storage
@@ -373,17 +374,21 @@ export default function AppPage() {
           },
         ]);
 
-      if (dbError) throw dbError;
+      if (dbError) {
+        console.error('Erro ao salvar no banco:', dbError);
+        alert(`Erro ao salvar foto: ${dbError.message}`);
+        return;
+      }
 
       setPhotoFile(null);
       setPhotoPreview(null);
       setPhotoNote('');
       setShowPhotoModal(false);
-      loadData(user.id);
-      alert('Foto adicionada com sucesso!');
-    } catch (error) {
+      await loadData(user.id);
+      alert('✅ Foto adicionada com sucesso!');
+    } catch (error: any) {
       console.error('Erro ao fazer upload da foto:', error);
-      alert('Erro ao adicionar foto. Verifique as configurações do storage.');
+      alert(`Erro: ${error.message}`);
     } finally {
       setUploadingPhoto(false);
     }
@@ -786,7 +791,7 @@ export default function AppPage() {
         )}
       </div>
 
-      {/* Modal Registrar Peso */}
+      {/* Modal Registrar Peso - SIMPLIFICADO */}
       {showWeightModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-slate-900 border border-white/10 rounded-2xl p-6 w-full max-w-md">
@@ -803,15 +808,16 @@ export default function AppPage() {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Peso (kg)
+                  Peso (kg) *
                 </label>
                 <input
                   type="number"
                   step="0.1"
                   value={newWeight}
                   onChange={(e) => setNewWeight(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  placeholder="75.5"
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white text-lg placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  placeholder="Ex: 75.5"
+                  autoFocus
                 />
               </div>
 
@@ -824,22 +830,23 @@ export default function AppPage() {
                   onChange={(e) => setNewWeightNote(e.target.value)}
                   className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
                   placeholder="Como você está se sentindo?"
-                  rows={3}
+                  rows={2}
                 />
               </div>
 
               <button
                 onClick={handleAddWeight}
-                className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white py-3 rounded-lg font-semibold hover:shadow-lg hover:shadow-purple-500/50 transition-all"
+                disabled={!newWeight || savingWeight}
+                className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white py-4 rounded-lg font-semibold hover:shadow-lg hover:shadow-purple-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-lg"
               >
-                Salvar Peso
+                {savingWeight ? 'Salvando...' : 'Salvar Peso'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal Adicionar Foto */}
+      {/* Modal Adicionar Foto - SIMPLIFICADO */}
       {showPhotoModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-slate-900 border border-white/10 rounded-2xl p-6 w-full max-w-md">
@@ -862,8 +869,8 @@ export default function AppPage() {
               {!photoPreview ? (
                 <label className="flex flex-col items-center justify-center w-full h-64 border-2 border-dashed border-white/20 rounded-xl cursor-pointer hover:bg-white/5 transition-all">
                   <Upload className="w-12 h-12 text-gray-400 mb-3" />
-                  <p className="text-gray-400 mb-2">Clique para selecionar uma foto</p>
-                  <p className="text-sm text-gray-500">ou arraste e solte aqui</p>
+                  <p className="text-gray-400 mb-2 font-medium">Clique para selecionar uma foto</p>
+                  <p className="text-sm text-gray-500">Máximo 5MB • JPG, PNG ou WEBP</p>
                   <input
                     type="file"
                     accept="image/*"
@@ -908,7 +915,7 @@ export default function AppPage() {
                   <button
                     onClick={handleUploadPhoto}
                     disabled={uploadingPhoto}
-                    className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white py-3 rounded-lg font-semibold hover:shadow-lg hover:shadow-purple-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white py-4 rounded-lg font-semibold hover:shadow-lg hover:shadow-purple-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-lg"
                   >
                     {uploadingPhoto ? 'Enviando...' : 'Salvar Foto'}
                   </button>
