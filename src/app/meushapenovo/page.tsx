@@ -310,13 +310,11 @@ export default function AppPage() {
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Validar tamanho (máx 5MB)
       if (file.size > 5 * 1024 * 1024) {
         alert('Foto muito grande! Máximo 5MB.');
         return;
       }
 
-      // Validar tipo
       if (!file.type.startsWith('image/')) {
         alert('Por favor, selecione uma imagem válida.');
         return;
@@ -340,7 +338,6 @@ export default function AppPage() {
     setUploadingPhoto(true);
 
     try {
-      // Upload da foto para o storage
       const fileExt = photoFile.name.split('.').pop();
       const fileName = `${user.id}/${Date.now()}.${fileExt}`;
       
@@ -354,12 +351,10 @@ export default function AppPage() {
         return;
       }
 
-      // Obter URL pública da foto
       const { data: { publicUrl } } = supabase.storage
         .from('progress-photos')
         .getPublicUrl(fileName);
 
-      // Salvar registro no banco
       const currentWeight = weightEntries[0]?.weight || 0;
       
       const { error: dbError } = await supabase
@@ -451,12 +446,6 @@ export default function AppPage() {
             </div>
             
             <div className="flex items-center gap-4">
-              <button 
-                onClick={() => router.push('/meushapenovo/configuracoes')}
-                className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-              >
-                <Settings className="w-5 h-5 text-gray-400" />
-              </button>
               <button onClick={handleSignOut} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
                 <LogOut className="w-5 h-5 text-gray-400" />
               </button>
@@ -636,23 +625,12 @@ export default function AppPage() {
               </button>
 
               <button 
-                onClick={() => router.push('/meushapenovo/treinos')}
+                onClick={() => setShowGoalModal(true)}
                 className="w-full bg-white/10 border border-white/20 text-white p-4 rounded-xl font-semibold hover:bg-white/20 transition-all flex items-center justify-between group"
               >
                 <span className="flex items-center gap-3">
-                  <Dumbbell className="w-5 h-5" />
-                  Ver Treinos
-                </span>
-                <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-              </button>
-
-              <button 
-                onClick={() => router.push('/meushapenovo/plano-alimentar')}
-                className="w-full bg-white/10 border border-white/20 text-white p-4 rounded-xl font-semibold hover:bg-white/20 transition-all flex items-center justify-between group"
-              >
-                <span className="flex items-center gap-3">
-                  <Apple className="w-5 h-5" />
-                  Plano Alimentar
+                  <Target className="w-5 h-5" />
+                  Definir Meta
                 </span>
                 <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
               </button>
@@ -687,48 +665,6 @@ export default function AppPage() {
             </ResponsiveContainer>
           </div>
         )}
-
-        {/* Features Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-          <div 
-            onClick={() => setActiveTab('progress')}
-            className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 hover:bg-white/10 transition-all cursor-pointer group"
-          >
-            <div className="p-3 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl w-fit mb-4 group-hover:scale-110 transition-transform">
-              <Activity className="w-6 h-6 text-white" />
-            </div>
-            <h3 className="text-lg font-bold text-white mb-2">Gráficos de Evolução</h3>
-            <p className="text-gray-400 text-sm">
-              Acompanhe seu progresso com gráficos detalhados de peso e composição corporal.
-            </p>
-          </div>
-
-          <div 
-            onClick={() => setShowGoalModal(true)}
-            className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 hover:bg-white/10 transition-all cursor-pointer group"
-          >
-            <div className="p-3 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl w-fit mb-4 group-hover:scale-110 transition-transform">
-              <Target className="w-6 h-6 text-white" />
-            </div>
-            <h3 className="text-lg font-bold text-white mb-2">Metas Personalizadas</h3>
-            <p className="text-gray-400 text-sm">
-              Defina e acompanhe suas metas de peso e objetivos específicos.
-            </p>
-          </div>
-
-          <div 
-            onClick={() => setActiveTab('achievements')}
-            className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 hover:bg-white/10 transition-all cursor-pointer group"
-          >
-            <div className="p-3 bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl w-fit mb-4 group-hover:scale-110 transition-transform">
-              <Award className="w-6 h-6 text-white" />
-            </div>
-            <h3 className="text-lg font-bold text-white mb-2">Conquistas</h3>
-            <p className="text-gray-400 text-sm">
-              Desbloqueie conquistas e celebre cada marco da sua jornada de transformação.
-            </p>
-          </div>
-        </div>
 
         {/* Conquistas */}
         <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 mb-8">
@@ -791,7 +727,7 @@ export default function AppPage() {
         )}
       </div>
 
-      {/* Modal Registrar Peso - SIMPLIFICADO */}
+      {/* Modal Registrar Peso */}
       {showWeightModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-slate-900 border border-white/10 rounded-2xl p-6 w-full max-w-md">
@@ -846,7 +782,7 @@ export default function AppPage() {
         </div>
       )}
 
-      {/* Modal Adicionar Foto - SIMPLIFICADO */}
+      {/* Modal Adicionar Foto */}
       {showPhotoModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-slate-900 border border-white/10 rounded-2xl p-6 w-full max-w-md">
