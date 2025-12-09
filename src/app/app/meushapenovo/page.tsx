@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
 import { 
@@ -18,7 +18,8 @@ import {
   Activity,
   Edit,
   Save,
-  X
+  X,
+  Loader2
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
@@ -55,6 +56,12 @@ interface Achievement {
   unlocked: boolean;
 }
 
+interface CalorieAnalysis {
+  foodName: string;
+  calories: number;
+  confidence: number;
+}
+
 export default function AppPage() {
   const { user, userData, subscription, loading: authLoading, signOut } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -72,6 +79,13 @@ export default function AppPage() {
   const [newWeightNote, setNewWeightNote] = useState('');
   const [newGoalWeight, setNewGoalWeight] = useState('');
   const [newGoalType, setNewGoalType] = useState<'lose' | 'gain'>('lose');
+
+  // Estados para análise de calorias
+  const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [calorieResult, setCalorieResult] = useState<CalorieAnalysis | null>(null);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (user && !authLoading) {
@@ -213,6 +227,61 @@ export default function AppPage() {
       loadData();
     } catch (error) {
       console.error('Erro ao adicionar meta:', error);
+    }
+  };
+
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64String = reader.result as string;
+      setCapturedImage(base64String);
+      setCalorieResult(null);
+      setAnalysisError(null);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleAnalyzeCalories = async () => {
+    if (!capturedImage) return;
+
+    setAnalyzing(true);
+    setAnalysisError(null);
+    setCalorieResult(null);
+
+    try {
+      const response = await fetch('/api/analyze-calories', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ image: capturedImage }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao analisar imagem');
+      }
+
+      setCalorieResult(data);
+    } catch (error: any) {
+      console.error('Erro ao analisar calorias:', error);
+      setAnalysisError(error.message || 'Erro ao analisar imagem. Tente novamente.');
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const resetPhotoModal = () => {
+    setCapturedImage(null);
+    setCalorieResult(null);
+    setAnalysisError(null);
+    setShowPhotoModal(false);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
   };
 
@@ -419,11 +488,11 @@ export default function AppPage() {
 
               <button 
                 onClick={() => setShowPhotoModal(true)}
-                className="w-full bg-white/10 border border-white/20 text-white p-4 rounded-xl font-semibold hover:bg-white/20 transition-all flex items-center justify-between group"
+                className="w-full bg-gradient-to-r from-orange-500 to-red-600 text-white p-4 rounded-xl font-semibold hover:shadow-lg hover:shadow-orange-500/50 transition-all flex items-center justify-between group"
               >
                 <span className="flex items-center gap-3">
                   <Camera className="w-5 h-5" />
-                  Adicionar Foto
+                  Analisar Calorias
                 </span>
                 <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
               </button>
@@ -631,28 +700,121 @@ export default function AppPage() {
         </div>
       )}
 
-      {/* Modal Adicionar Foto */}
+      {/* Modal Analisar Calorias */}
       {showPhotoModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-900 border border-white/10 rounded-2xl p-6 w-full max-w-md">
+          <div className="bg-slate-900 border border-white/10 rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bold text-white">Adicionar Foto</h3>
+              <h3 className="text-xl font-bold text-white">Analisar Calorias</h3>
               <button 
-                onClick={() => setShowPhotoModal(false)}
+                onClick={resetPhotoModal}
                 className="text-gray-400 hover:text-white"
               >
                 <X className="w-6 h-6" />
               </button>
             </div>
             
-            <div className="text-center py-8">
-              <Camera className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-400 mb-4">
-                Funcionalidade de upload de fotos em desenvolvimento
-              </p>
-              <p className="text-sm text-gray-500">
-                Em breve você poderá adicionar suas fotos de progresso diretamente pelo app
-              </p>
+            <div className="space-y-4">
+              {!capturedImage ? (
+                <div className="text-center py-8">
+                  <Camera className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-400 mb-6">
+                    Tire uma foto do seu prato ou bebida para descobrir quantas calorias tem
+                  </p>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full bg-gradient-to-r from-orange-500 to-red-600 text-white py-4 rounded-xl font-semibold hover:shadow-lg hover:shadow-orange-500/50 transition-all flex items-center justify-center gap-2"
+                  >
+                    <Camera className="w-5 h-5" />
+                    Tirar Foto
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="relative">
+                    <img 
+                      src={capturedImage} 
+                      alt="Foto capturada"
+                      className="w-full rounded-xl"
+                    />
+                  </div>
+
+                  {!calorieResult && !analyzing && !analysisError && (
+                    <button
+                      onClick={handleAnalyzeCalories}
+                      className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white py-4 rounded-xl font-semibold hover:shadow-lg hover:shadow-purple-500/50 transition-all flex items-center justify-center gap-2"
+                    >
+                      <Activity className="w-5 h-5" />
+                      Analisar Calorias
+                    </button>
+                  )}
+
+                  {analyzing && (
+                    <div className="bg-blue-500/10 border border-blue-500/50 rounded-xl p-6 text-center">
+                      <Loader2 className="w-12 h-12 text-blue-400 mx-auto mb-3 animate-spin" />
+                      <p className="text-blue-400 font-semibold">Analisando imagem...</p>
+                      <p className="text-gray-400 text-sm mt-2">Isso pode levar alguns segundos</p>
+                    </div>
+                  )}
+
+                  {analysisError && (
+                    <div className="bg-red-500/10 border border-red-500/50 rounded-xl p-6">
+                      <p className="text-red-400 font-semibold mb-2">❌ Erro ao analisar</p>
+                      <p className="text-gray-400 text-sm mb-4">{analysisError}</p>
+                      <button
+                        onClick={handleAnalyzeCalories}
+                        className="w-full bg-red-600 text-white py-3 rounded-lg font-semibold hover:bg-red-700 transition-all"
+                      >
+                        Tentar Novamente
+                      </button>
+                    </div>
+                  )}
+
+                  {calorieResult && (
+                    <div className="bg-gradient-to-br from-green-500/20 to-emerald-600/20 border border-green-500/50 rounded-xl p-6">
+                      <div className="text-center mb-4">
+                        <p className="text-green-400 font-semibold text-lg mb-2">✅ Análise Completa!</p>
+                        <h4 className="text-white text-2xl font-bold mb-1">{calorieResult.foodName}</h4>
+                        <div className="text-5xl font-bold text-white my-4">
+                          {calorieResult.calories}
+                          <span className="text-2xl text-gray-400 ml-2">kcal</span>
+                        </div>
+                        <div className="flex items-center justify-center gap-2 text-sm text-gray-400">
+                          <span>Confiança:</span>
+                          <div className="flex gap-1">
+                            {[...Array(5)].map((_, i) => (
+                              <div
+                                key={i}
+                                className={`w-2 h-2 rounded-full ${
+                                  i < Math.round(calorieResult.confidence * 5)
+                                    ? 'bg-green-400'
+                                    : 'bg-gray-600'
+                                }`}
+                              />
+                            ))}
+                          </div>
+                          <span>{Math.round(calorieResult.confidence * 100)}%</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={resetPhotoModal}
+                    className="w-full bg-white/10 border border-white/20 text-white py-3 rounded-lg font-semibold hover:bg-white/20 transition-all"
+                  >
+                    Analisar Outra Foto
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
