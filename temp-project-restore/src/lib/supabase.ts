@@ -1,16 +1,12 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Variáveis de ambiente do Supabase
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
-// Validação das variáveis
 if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error(
-    'Variáveis de ambiente do Supabase não configuradas!\n' +
-    'Configure NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY\n' +
-    'Acesse: https://supabase.com/dashboard/project/_/settings/api'
-  );
+  console.error('⚠️ Variáveis de ambiente do Supabase não configuradas!');
+  console.error('NEXT_PUBLIC_SUPABASE_URL:', supabaseUrl ? '✓ Configurada' : '✗ Faltando');
+  console.error('NEXT_PUBLIC_SUPABASE_ANON_KEY:', supabaseAnonKey ? '✓ Configurada' : '✗ Faltando');
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
