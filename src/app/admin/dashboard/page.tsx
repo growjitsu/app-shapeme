@@ -21,8 +21,7 @@ import {
   Crown,
   Shield,
   Menu,
-  X,
-  AlertCircle
+  X
 } from 'lucide-react';
 
 // Tipos
@@ -56,7 +55,6 @@ export default function AdminDashboard() {
   });
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   // Verificar autenticação
   useEffect(() => {
@@ -71,7 +69,6 @@ export default function AdminDashboard() {
     async function fetchUsers() {
       try {
         setLoading(true);
-        setError(null);
 
         // Buscar todos os usuários da tabela users
         const { data: usersData, error: usersError } = await supabase
@@ -81,26 +78,17 @@ export default function AdminDashboard() {
 
         if (usersError) {
           console.error('Erro ao buscar usuários:', usersError);
-          setError(`Erro ao buscar usuários: ${usersError.message}`);
-          
-          // Se a tabela não existir, mostrar mensagem específica
-          if (usersError.message.includes('relation') || usersError.message.includes('does not exist')) {
-            setError('Tabela "users" não encontrada. Execute o script CONFIGURAR_PAINEL_ADMIN.sql no Supabase.');
-          }
-          
-          setLoading(false);
           return;
         }
 
         // Buscar assinaturas ativas
         const { data: subscriptionsData, error: subsError } = await supabase
           .from('subscriptions')
-          .select('user_id, is_active, plan_type, amount, payment_status')
+          .select('user_id, is_active, plan_type')
           .eq('is_active', true);
 
         if (subsError) {
           console.error('Erro ao buscar assinaturas:', subsError);
-          // Não bloqueia se assinaturas não existirem, apenas não mostra dados premium
         }
 
         // Mapear usuários com informações de assinatura
@@ -134,9 +122,8 @@ export default function AdminDashboard() {
           premiumUsers
         });
 
-      } catch (error: any) {
+      } catch (error) {
         console.error('Erro ao carregar dados:', error);
-        setError(`Erro inesperado: ${error.message || 'Erro desconhecido'}`);
       } finally {
         setLoading(false);
       }
@@ -272,34 +259,9 @@ export default function AdminDashboard() {
 
         {/* Content */}
         <div className="p-6">
-          {/* Error Message */}
-          {error && (
-            <div className="mb-6 bg-red-500/10 border border-red-500/30 rounded-2xl p-6">
-              <div className="flex items-start gap-4">
-                <AlertCircle className="w-6 h-6 text-red-400 flex-shrink-0 mt-0.5" />
-                <div>
-                  <h3 className="text-red-400 font-bold mb-2">Erro ao carregar dados</h3>
-                  <p className="text-red-300 text-sm mb-4">{error}</p>
-                  <div className="bg-red-500/20 rounded-xl p-4 text-sm text-red-200">
-                    <p className="font-bold mb-2">📋 Solução:</p>
-                    <ol className="list-decimal list-inside space-y-1">
-                      <li>Abra o SQL Editor no dashboard do Supabase</li>
-                      <li>Copie e cole o conteúdo do arquivo <code className="bg-red-500/30 px-2 py-1 rounded">CONFIGURAR_PAINEL_ADMIN.sql</code></li>
-                      <li>Execute o script clicando em "Run"</li>
-                      <li>Recarregue esta página</li>
-                    </ol>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
           {loading ? (
             <div className="flex items-center justify-center h-64">
-              <div className="text-center">
-                <div className="w-16 h-16 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                <div className="text-white text-lg">Carregando dados do banco...</div>
-              </div>
+              <div className="text-white text-lg">Carregando dados...</div>
             </div>
           ) : (
             <>
@@ -325,7 +287,7 @@ export default function AdminDashboard() {
                         </div>
                       </div>
                       <h3 className="text-3xl font-bold text-white mb-1">{stats.activeUsers}</h3>
-                      <p className="text-gray-400 text-sm">Usuários Ativos (Com Plano)</p>
+                      <p className="text-gray-400 text-sm">Usuários Logados (Ativos)</p>
                     </div>
 
                     <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 hover:bg-white/10 transition-all">
@@ -352,37 +314,29 @@ export default function AdminDashboard() {
                   {/* Recent Users */}
                   <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
                     <h2 className="text-xl font-bold text-white mb-6">Usuários Recentes</h2>
-                    {users.length === 0 ? (
-                      <div className="text-center py-12">
-                        <Users className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-                        <p className="text-gray-400">Nenhum usuário encontrado</p>
-                        <p className="text-gray-500 text-sm mt-2">Execute o script SQL para criar dados de exemplo</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-4">
-                        {users.slice(0, 5).map((user) => (
-                          <div key={user.id} className="flex items-center justify-between p-4 bg-white/5 rounded-xl hover:bg-white/10 transition-all">
-                            <div className="flex items-center gap-4">
-                              <div className="w-12 h-12 bg-gradient-to-br from-purple-600 to-pink-600 rounded-full flex items-center justify-center text-white font-bold">
-                                {user.name.charAt(0).toUpperCase()}
-                              </div>
-                              <div>
-                                <h3 className="text-white font-medium">{user.name}</h3>
-                                <p className="text-gray-400 text-sm">{user.email}</p>
-                              </div>
+                    <div className="space-y-4">
+                      {users.slice(0, 5).map((user) => (
+                        <div key={user.id} className="flex items-center justify-between p-4 bg-white/5 rounded-xl hover:bg-white/10 transition-all">
+                          <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 bg-gradient-to-br from-purple-600 to-pink-600 rounded-full flex items-center justify-center text-white font-bold">
+                              {user.name.charAt(0)}
                             </div>
-                            <div className="flex items-center gap-3">
-                              <span className={`px-3 py-1 rounded-full text-xs font-medium ${user.plan === 'Premium Completo' ? 'bg-gradient-to-r from-yellow-500 to-orange-500 text-white' : 'bg-gray-500/20 text-gray-400'}`}>
-                                {user.plan}
-                              </span>
-                              <span className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(user.status)}`}>
-                                {user.status}
-                              </span>
+                            <div>
+                              <h3 className="text-white font-medium">{user.name}</h3>
+                              <p className="text-gray-400 text-sm">{user.email}</p>
                             </div>
                           </div>
-                        ))}
-                      </div>
-                    )}
+                          <div className="flex items-center gap-3">
+                            <span className={`px-3 py-1 rounded-full text-xs font-medium ${user.plan === 'Premium Completo' ? 'bg-gradient-to-r from-yellow-500 to-orange-500 text-white' : 'bg-gray-500/20 text-gray-400'}`}>
+                              {user.plan}
+                            </span>
+                            <span className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(user.status)}`}>
+                              {user.status}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
               )}
@@ -408,60 +362,53 @@ export default function AdminDashboard() {
 
                   {/* Users Table */}
                   <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden">
-                    {filteredUsers.length === 0 ? (
-                      <div className="text-center py-12">
-                        <Users className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-                        <p className="text-gray-400">Nenhum usuário encontrado</p>
-                      </div>
-                    ) : (
-                      <div className="overflow-x-auto">
-                        <table className="w-full">
-                          <thead className="bg-white/5 border-b border-white/10">
-                            <tr>
-                              <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Usuário</th>
-                              <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Plano</th>
-                              <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Status</th>
-                              <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Data de Cadastro</th>
-                              <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Último Acesso</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-white/10">
-                            {filteredUsers.map((user) => (
-                              <tr key={user.id} className="hover:bg-white/5 transition-colors">
-                                <td className="px-6 py-4">
-                                  <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 bg-gradient-to-br from-purple-600 to-pink-600 rounded-full flex items-center justify-center text-white font-bold text-sm">
-                                      {user.name.charAt(0).toUpperCase()}
-                                    </div>
-                                    <div>
-                                      <div className="text-white font-medium">{user.name}</div>
-                                      <div className="text-gray-400 text-sm">{user.email}</div>
-                                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="bg-white/5 border-b border-white/10">
+                          <tr>
+                            <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Usuário</th>
+                            <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Plano</th>
+                            <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Status</th>
+                            <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Data de Cadastro</th>
+                            <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Último Acesso</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/10">
+                          {filteredUsers.map((user) => (
+                            <tr key={user.id} className="hover:bg-white/5 transition-colors">
+                              <td className="px-6 py-4">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-10 h-10 bg-gradient-to-br from-purple-600 to-pink-600 rounded-full flex items-center justify-center text-white font-bold text-sm">
+                                    {user.name.charAt(0)}
                                   </div>
-                                </td>
-                                <td className="px-6 py-4">
-                                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${user.plan === 'Premium Completo' ? 'bg-gradient-to-r from-yellow-500 to-orange-500 text-white inline-flex items-center gap-1' : 'bg-gray-500/20 text-gray-400'}`}>
-                                    {user.plan === 'Premium Completo' && <Crown className="w-3 h-3" />}
-                                    {user.plan}
-                                  </span>
-                                </td>
-                                <td className="px-6 py-4">
-                                  <span className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(user.status)}`}>
-                                    {user.status}
-                                  </span>
-                                </td>
-                                <td className="px-6 py-4 text-gray-400 text-sm">
-                                  {new Date(user.joinDate).toLocaleDateString('pt-BR')}
-                                </td>
-                                <td className="px-6 py-4 text-gray-400 text-sm">
-                                  {new Date(user.lastAccess).toLocaleDateString('pt-BR')}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
+                                  <div>
+                                    <div className="text-white font-medium">{user.name}</div>
+                                    <div className="text-gray-400 text-sm">{user.email}</div>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-6 py-4">
+                                <span className={`px-3 py-1 rounded-full text-xs font-medium ${user.plan === 'Premium Completo' ? 'bg-gradient-to-r from-yellow-500 to-orange-500 text-white inline-flex items-center gap-1' : 'bg-gray-500/20 text-gray-400'}`}>
+                                  {user.plan === 'Premium Completo' && <Crown className="w-3 h-3" />}
+                                  {user.plan}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4">
+                                <span className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(user.status)}`}>
+                                  {user.status}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 text-gray-400 text-sm">
+                                {new Date(user.joinDate).toLocaleDateString('pt-BR')}
+                              </td>
+                              <td className="px-6 py-4 text-gray-400 text-sm">
+                                {new Date(user.lastAccess).toLocaleDateString('pt-BR')}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               )}
@@ -515,11 +462,11 @@ export default function AdminDashboard() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                       <div className="bg-white/5 rounded-xl p-6">
                         <h3 className="text-2xl font-bold text-white mb-1">{stats.activeUsers}</h3>
-                        <p className="text-sm font-medium text-green-400">Ativos (Com Plano Premium)</p>
+                        <p className="text-sm font-medium text-green-400">Ativos (Logados)</p>
                       </div>
                       <div className="bg-white/5 rounded-xl p-6">
                         <h3 className="text-2xl font-bold text-white mb-1">{stats.totalUsers - stats.activeUsers}</h3>
-                        <p className="text-sm font-medium text-yellow-400">Inativos (Sem Plano)</p>
+                        <p className="text-sm font-medium text-yellow-400">Inativos</p>
                       </div>
                     </div>
                   </div>
