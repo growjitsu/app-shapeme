@@ -83,6 +83,35 @@ export type Database = {
           created_at?: string;
         };
       };
+      calorie_entries: {
+        Row: {
+          id: string;
+          user_id: string;
+          date: string;
+          image_url: string;
+          calories: number;
+          food_name: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          date?: string;
+          image_url: string;
+          calories: number;
+          food_name: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          date?: string;
+          image_url?: string;
+          calories?: number;
+          food_name?: string;
+          created_at?: string;
+        };
+      };
       measurements: {
         Row: {
           id: string;

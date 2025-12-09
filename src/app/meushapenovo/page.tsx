@@ -17,7 +17,8 @@ import {
   ChevronRight,
   Activity,
   X,
-  Sparkles
+  Loader2,
+  Flame
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
@@ -28,12 +29,13 @@ interface WeightEntry {
   note: string | null;
 }
 
-interface ProgressPhoto {
+interface CalorieEntry {
   id: string;
   date: string;
   image_url: string;
-  weight: number;
-  note: string | null;
+  calories: number;
+  food_name: string;
+  created_at: string;
 }
 
 interface Goal {
@@ -54,23 +56,13 @@ interface Achievement {
   unlocked: boolean;
 }
 
-interface CalorieAnalysis {
-  food_name: string;
-  calories: number;
-  protein: number;
-  carbs: number;
-  fat: number;
-  confidence: string;
-}
-
 export default function AppPage() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
   const [userData, setUserData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('dashboard');
   const [weightEntries, setWeightEntries] = useState<WeightEntry[]>([]);
-  const [progressPhotos, setProgressPhotos] = useState<ProgressPhoto[]>([]);
+  const [calorieEntries, setCalorieEntries] = useState<CalorieEntry[]>([]);
   const [goal, setGoal] = useState<Goal | null>(null);
   const [achievements, setAchievements] = useState<Achievement[]>([]);
   
@@ -84,9 +76,12 @@ export default function AppPage() {
   const [newGoalType, setNewGoalType] = useState<'lose' | 'gain'>('lose');
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
-  const [analyzingCalories, setAnalyzingCalories] = useState(false);
-  const [calorieResult, setCalorieResult] = useState<CalorieAnalysis | null>(null);
-  const [savingWeight, setSavingWeight] = useState(false);
+  const [analyzingPhoto, setAnalyzingPhoto] = useState(false);
+  const [calorieResult, setCalorieResult] = useState<{
+    calories: number;
+    foodName: string;
+    confidence: number;
+  } | null>(null);
 
   useEffect(() => {
     checkAuth();
@@ -153,15 +148,15 @@ export default function AppPage() {
       }
 
       try {
-        const { data: photos } = await supabase
-          .from('progress_photos')
+        const { data: calories } = await supabase
+          .from('calorie_entries')
           .select('*')
           .eq('user_id', userId)
-          .order('date', { ascending: false });
+          .order('created_at', { ascending: false });
 
-        if (photos) setProgressPhotos(photos);
+        if (calories) setCalorieEntries(calories);
       } catch (error) {
-        console.log('Tabela progress_photos não encontrada');
+        console.log('Tabela calorie_entries não encontrada');
       }
 
       try {
@@ -176,13 +171,13 @@ export default function AppPage() {
         console.log('Tabela goals não encontrada');
       }
 
-      generateAchievements(weightEntries, progressPhotos);
+      generateAchievements(weightEntries, calorieEntries);
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
     }
   };
 
-  const generateAchievements = (weights: WeightEntry[], photos: ProgressPhoto[]) => {
+  const generateAchievements = (weights: WeightEntry[], calories: CalorieEntry[]) => {
     const achievementsList: Achievement[] = [
       {
         id: '1',
@@ -209,35 +204,35 @@ export default function AppPage() {
         id: '4',
         title: 'Primeira Análise de Calorias',
         description: 'Analisou suas primeiras calorias',
-        icon: '🍽️',
-        unlocked: photos.length > 0,
+        icon: '🔥',
+        unlocked: calories.length > 0,
       },
       {
         id: '5',
         title: 'Consistente',
         description: 'Registrou peso por 7 dias seguidos',
-        icon: '🔥',
+        icon: '💪',
         unlocked: weights.length >= 7,
       },
       {
         id: '6',
-        title: 'Nutricionista Virtual',
+        title: 'Nutricionista Digital',
         description: 'Analisou 10 refeições',
-        icon: '✨',
-        unlocked: photos.length >= 10,
+        icon: '🍽️',
+        unlocked: calories.length >= 10,
       },
       {
         id: '7',
         title: 'Dedicado',
         description: 'Registrou peso por 30 dias',
-        icon: '💪',
+        icon: '🏆',
         unlocked: weights.length >= 30,
       },
       {
         id: '8',
         title: 'Meta Alcançada',
         description: 'Atingiu seu objetivo de peso',
-        icon: '🏆',
+        icon: '👑',
         unlocked: false,
       },
     ];
@@ -246,42 +241,50 @@ export default function AppPage() {
   };
 
   const handleAddWeight = async () => {
-    if (!user || !newWeight) {
-      alert('Por favor, insira um peso válido');
-      return;
-    }
-
-    setSavingWeight(true);
+    if (!user || !newWeight) return;
 
     try {
-      const { data, error } = await supabase
-        .from('weight_entries')
-        .insert([
-          {
-            user_id: user.id,
-            date: new Date().toISOString().split('T')[0],
-            weight: parseFloat(newWeight),
-            note: newWeightNote || null,
-          },
-        ])
-        .select();
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        alert('Sessão expirada. Faça login novamente.');
+        router.push('/app');
+        return;
+      }
 
-      if (error) {
-        console.error('Erro ao salvar peso:', error);
-        alert(`Erro: ${error.message}\n\nVerifique se executou o SQL de configuração do banco.`);
+      const response = await fetch('/api/weight', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          weight: parseFloat(newWeight),
+          note: newWeightNote || null
+        })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        if (result.sqlNeeded) {
+          console.error('❌ Tabela não existe. SQL necessário:');
+          console.error(result.sqlNeeded);
+          alert(`Erro: ${result.error}\n\nVeja o console do navegador para o SQL necessário.`);
+        } else {
+          alert(`Erro: ${result.error}\n${result.details || result.message || ''}`);
+        }
         return;
       }
 
       setNewWeight('');
       setNewWeightNote('');
       setShowWeightModal(false);
-      await loadData(user.id);
-      alert('✅ Peso registrado com sucesso!');
+      loadData(user.id);
+      alert('Peso registrado com sucesso!');
     } catch (error: any) {
-      console.error('Erro ao adicionar peso:', error);
+      console.error('💥 Erro ao adicionar peso:', error);
       alert(`Erro ao salvar peso: ${error.message}`);
-    } finally {
-      setSavingWeight(false);
     }
   };
 
@@ -319,18 +322,6 @@ export default function AppPage() {
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Validar tamanho (máx 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        alert('Foto muito grande! Máximo 5MB.');
-        return;
-      }
-
-      // Validar tipo
-      if (!file.type.startsWith('image/')) {
-        alert('Por favor, selecione uma imagem válida.');
-        return;
-      }
-
       setPhotoFile(file);
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -341,40 +332,67 @@ export default function AppPage() {
   };
 
   const handleAnalyzeCalories = async () => {
-    if (!photoFile || !photoPreview) {
-      alert('Por favor, selecione uma foto primeiro');
-      return;
-    }
+    if (!user || !photoFile || !photoPreview) return;
 
-    setAnalyzingCalories(true);
+    setAnalyzingPhoto(true);
     setCalorieResult(null);
 
     try {
-      // Converter imagem para base64
-      const base64Image = photoPreview.split(',')[1];
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        alert('Sessão expirada. Faça login novamente.');
+        router.push('/app');
+        return;
+      }
 
-      // Chamar API de análise de calorias
+      // Enviar imagem para análise
       const response = await fetch('/api/analyze-calories', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
         },
         body: JSON.stringify({
-          image: base64Image,
-        }),
+          image: photoPreview
+        })
       });
 
+      const result = await response.json();
+
       if (!response.ok) {
-        throw new Error('Erro ao analisar imagem');
+        throw new Error(result.error || 'Erro ao analisar imagem');
       }
 
-      const data = await response.json();
-      setCalorieResult(data);
+      setCalorieResult({
+        calories: result.calories,
+        foodName: result.foodName,
+        confidence: result.confidence
+      });
+
+      // Salvar no banco de dados
+      const { error: dbError } = await supabase
+        .from('calorie_entries')
+        .insert([
+          {
+            user_id: user.id,
+            date: new Date().toISOString().split('T')[0],
+            image_url: photoPreview,
+            calories: result.calories,
+            food_name: result.foodName,
+          },
+        ]);
+
+      if (dbError) {
+        console.error('Erro ao salvar no banco:', dbError);
+      }
+
+      loadData(user.id);
     } catch (error: any) {
       console.error('Erro ao analisar calorias:', error);
       alert(`Erro ao analisar imagem: ${error.message}`);
     } finally {
-      setAnalyzingCalories(false);
+      setAnalyzingPhoto(false);
     }
   };
 
@@ -409,6 +427,7 @@ export default function AppPage() {
     ? Math.floor((Date.now() - new Date(userData.created_at).getTime()) / (1000 * 60 * 60 * 24))
     : 0;
   const workoutsCompleted = Math.floor(daysActive * 0.8);
+  const totalCalories = calorieEntries.reduce((sum, entry) => sum + entry.calories, 0);
 
   const chartData = weightEntries
     .slice(0, 30)
@@ -502,13 +521,13 @@ export default function AppPage() {
           <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 hover:bg-white/10 transition-all">
             <div className="flex items-center justify-between mb-4">
               <div className="p-3 bg-gradient-to-br from-orange-500 to-red-600 rounded-xl">
-                <Sparkles className="w-6 h-6 text-white" />
+                <Flame className="w-6 h-6 text-white" />
               </div>
               <span className="text-2xl font-bold text-orange-400">
-                {progressPhotos.length}
+                {totalCalories}
               </span>
             </div>
-            <h3 className="text-gray-400 text-sm font-medium">Análises de Calorias</h3>
+            <h3 className="text-gray-400 text-sm font-medium">Calorias Analisadas</h3>
           </div>
         </div>
 
@@ -610,10 +629,10 @@ export default function AppPage() {
 
               <button 
                 onClick={() => setShowCalorieModal(true)}
-                className="w-full bg-gradient-to-r from-orange-500 to-red-600 text-white p-4 rounded-xl font-semibold hover:shadow-lg hover:shadow-orange-500/50 transition-all flex items-center justify-between group"
+                className="w-full bg-gradient-to-r from-orange-600 to-red-600 text-white p-4 rounded-xl font-semibold hover:shadow-lg hover:shadow-orange-500/50 transition-all flex items-center justify-between group"
               >
                 <span className="flex items-center gap-3">
-                  <Sparkles className="w-5 h-5" />
+                  <Camera className="w-5 h-5" />
                   Analisar Calorias
                 </span>
                 <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
@@ -675,15 +694,15 @@ export default function AppPage() {
         {/* Features Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
           <div 
-            onClick={() => setActiveTab('progress')}
+            onClick={() => setShowCalorieModal(true)}
             className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 hover:bg-white/10 transition-all cursor-pointer group"
           >
-            <div className="p-3 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl w-fit mb-4 group-hover:scale-110 transition-transform">
-              <Activity className="w-6 h-6 text-white" />
+            <div className="p-3 bg-gradient-to-br from-orange-500 to-red-600 rounded-xl w-fit mb-4 group-hover:scale-110 transition-transform">
+              <Flame className="w-6 h-6 text-white" />
             </div>
-            <h3 className="text-lg font-bold text-white mb-2">Gráficos de Evolução</h3>
+            <h3 className="text-lg font-bold text-white mb-2">Análise de Calorias</h3>
             <p className="text-gray-400 text-sm">
-              Acompanhe seu progresso com gráficos detalhados de peso e composição corporal.
+              Tire uma foto do seu prato e descubra quantas calorias tem.
             </p>
           </div>
 
@@ -700,10 +719,7 @@ export default function AppPage() {
             </p>
           </div>
 
-          <div 
-            onClick={() => setActiveTab('achievements')}
-            className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 hover:bg-white/10 transition-all cursor-pointer group"
-          >
+          <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 hover:bg-white/10 transition-all cursor-pointer group">
             <div className="p-3 bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl w-fit mb-4 group-hover:scale-110 transition-transform">
               <Award className="w-6 h-6 text-white" />
             </div>
@@ -750,23 +766,24 @@ export default function AppPage() {
           </div>
         </div>
 
-        {/* Fotos de Progresso */}
-        {progressPhotos.length > 0 && (
+        {/* Histórico de Análises de Calorias */}
+        {calorieEntries.length > 0 && (
           <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6">
             <h3 className="text-xl font-bold text-white mb-6">Histórico de Análises</h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {progressPhotos.map((photo) => (
-                <div key={photo.id} className="relative group">
-                  <img 
-                    src={photo.image_url} 
-                    alt="Análise"
-                    className="w-full aspect-square object-cover rounded-xl"
-                  />
-                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity rounded-xl flex flex-col items-center justify-center p-2">
-                    <p className="text-white font-semibold">{photo.weight.toFixed(0)} kcal</p>
-                    <p className="text-gray-300 text-xs">
-                      {new Date(photo.date).toLocaleDateString('pt-BR')}
-                    </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {calorieEntries.slice(0, 6).map((entry) => (
+                <div key={entry.id} className="bg-white/5 border border-white/10 rounded-xl p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 bg-gradient-to-br from-orange-500 to-red-600 rounded-lg">
+                      <Flame className="w-5 h-5 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="font-semibold text-white mb-1">{entry.food_name}</h4>
+                      <p className="text-2xl font-bold text-orange-400 mb-1">{entry.calories} kcal</p>
+                      <p className="text-xs text-gray-400">
+                        {new Date(entry.created_at).toLocaleDateString('pt-BR')}
+                      </p>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -792,16 +809,15 @@ export default function AppPage() {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Peso (kg) *
+                  Peso (kg)
                 </label>
                 <input
                   type="number"
                   step="0.1"
                   value={newWeight}
                   onChange={(e) => setNewWeight(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white text-lg placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  placeholder="Ex: 75.5"
-                  autoFocus
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  placeholder="75.5"
                 />
               </div>
 
@@ -814,16 +830,15 @@ export default function AppPage() {
                   onChange={(e) => setNewWeightNote(e.target.value)}
                   className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
                   placeholder="Como você está se sentindo?"
-                  rows={2}
+                  rows={3}
                 />
               </div>
 
               <button
                 onClick={handleAddWeight}
-                disabled={!newWeight || savingWeight}
-                className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white py-4 rounded-lg font-semibold hover:shadow-lg hover:shadow-purple-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-lg"
+                className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white py-3 rounded-lg font-semibold hover:shadow-lg hover:shadow-purple-500/50 transition-all"
               >
-                {savingWeight ? 'Salvando...' : 'Salvar Peso'}
+                Salvar Peso
               </button>
             </div>
           </div>
@@ -833,7 +848,7 @@ export default function AppPage() {
       {/* Modal Analisar Calorias */}
       {showCalorieModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-900 border border-white/10 rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
+          <div className="bg-slate-900 border border-white/10 rounded-2xl p-6 w-full max-w-md">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-xl font-bold text-white">Analisar Calorias</h3>
               <button 
@@ -853,8 +868,8 @@ export default function AppPage() {
               {!photoPreview ? (
                 <label className="flex flex-col items-center justify-center w-full h-64 border-2 border-dashed border-white/20 rounded-xl cursor-pointer hover:bg-white/5 transition-all">
                   <Camera className="w-12 h-12 text-gray-400 mb-3" />
-                  <p className="text-gray-400 mb-2 font-medium">Tire uma foto do alimento</p>
-                  <p className="text-sm text-gray-500">Máximo 5MB • JPG, PNG ou WEBP</p>
+                  <p className="text-gray-400 mb-2">Tire uma foto do seu prato</p>
+                  <p className="text-sm text-gray-500">ou selecione uma imagem</p>
                   <input
                     type="file"
                     accept="image/*"
@@ -864,90 +879,77 @@ export default function AppPage() {
                   />
                 </label>
               ) : (
-                <div className="space-y-4">
-                  <div className="relative">
-                    <img 
-                      src={photoPreview} 
-                      alt="Preview" 
-                      className="w-full h-64 object-cover rounded-xl"
-                    />
+                <div className="relative">
+                  <img 
+                    src={photoPreview} 
+                    alt="Preview" 
+                    className="w-full h-64 object-cover rounded-xl"
+                  />
+                  {!calorieResult && !analyzingPhoto && (
                     <button
                       onClick={() => {
                         setPhotoFile(null);
                         setPhotoPreview(null);
-                        setCalorieResult(null);
                       }}
                       className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-lg hover:bg-red-600 transition-colors"
                     >
                       <X className="w-4 h-4" />
                     </button>
-                  </div>
-
-                  {!calorieResult && (
-                    <button
-                      onClick={handleAnalyzeCalories}
-                      disabled={analyzingCalories}
-                      className="w-full bg-gradient-to-r from-orange-500 to-red-600 text-white py-4 rounded-lg font-semibold hover:shadow-lg hover:shadow-orange-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-lg flex items-center justify-center gap-2"
-                    >
-                      {analyzingCalories ? (
-                        <>
-                          <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                          Analisando...
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="w-5 h-5" />
-                          Analisar com IA
-                        </>
-                      )}
-                    </button>
-                  )}
-
-                  {calorieResult && (
-                    <div className="bg-gradient-to-br from-orange-500/20 to-red-600/20 border border-orange-500/50 rounded-xl p-6 space-y-4">
-                      <div className="text-center">
-                        <h4 className="text-2xl font-bold text-white mb-2">{calorieResult.food_name}</h4>
-                        <div className="text-4xl font-bold text-orange-400 mb-1">
-                          {calorieResult.calories} kcal
-                        </div>
-                        <p className="text-sm text-gray-400">Estimativa por porção</p>
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-3">
-                        <div className="bg-white/10 rounded-lg p-3 text-center">
-                          <div className="text-lg font-bold text-blue-400">{calorieResult.protein}g</div>
-                          <div className="text-xs text-gray-400">Proteína</div>
-                        </div>
-                        <div className="bg-white/10 rounded-lg p-3 text-center">
-                          <div className="text-lg font-bold text-yellow-400">{calorieResult.carbs}g</div>
-                          <div className="text-xs text-gray-400">Carboidratos</div>
-                        </div>
-                        <div className="bg-white/10 rounded-lg p-3 text-center">
-                          <div className="text-lg font-bold text-green-400">{calorieResult.fat}g</div>
-                          <div className="text-xs text-gray-400">Gordura</div>
-                        </div>
-                      </div>
-
-                      <div className="bg-blue-500/10 border border-blue-500/50 rounded-lg p-3">
-                        <p className="text-blue-400 text-sm text-center">
-                          <strong>Confiança:</strong> {calorieResult.confidence}
-                        </p>
-                      </div>
-
-                      <button
-                        onClick={() => {
-                          setShowCalorieModal(false);
-                          setPhotoFile(null);
-                          setPhotoPreview(null);
-                          setCalorieResult(null);
-                        }}
-                        className="w-full bg-white/10 border border-white/20 text-white py-3 rounded-lg font-semibold hover:bg-white/20 transition-all"
-                      >
-                        Fechar
-                      </button>
-                    </div>
                   )}
                 </div>
+              )}
+
+              {analyzingPhoto && (
+                <div className="bg-blue-500/10 border border-blue-500/50 rounded-xl p-4 flex items-center gap-3">
+                  <Loader2 className="w-6 h-6 text-blue-400 animate-spin" />
+                  <div>
+                    <p className="text-blue-400 font-semibold">Analisando imagem...</p>
+                    <p className="text-sm text-gray-400">Isso pode levar alguns segundos</p>
+                  </div>
+                </div>
+              )}
+
+              {calorieResult && (
+                <div className="bg-gradient-to-br from-orange-600/20 to-red-600/20 border border-orange-500/50 rounded-xl p-6">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="p-3 bg-gradient-to-br from-orange-500 to-red-600 rounded-xl">
+                      <Flame className="w-8 h-8 text-white" />
+                    </div>
+                    <div>
+                      <h4 className="text-2xl font-bold text-white">{calorieResult.calories} kcal</h4>
+                      <p className="text-orange-300">{calorieResult.foodName}</p>
+                    </div>
+                  </div>
+                  <div className="bg-white/5 rounded-lg p-3">
+                    <p className="text-sm text-gray-300">
+                      Confiança: <span className="font-semibold text-white">{(calorieResult.confidence * 100).toFixed(0)}%</span>
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {photoPreview && !calorieResult && !analyzingPhoto && (
+                <button
+                  onClick={handleAnalyzeCalories}
+                  className="w-full bg-gradient-to-r from-orange-600 to-red-600 text-white py-3 rounded-lg font-semibold hover:shadow-lg hover:shadow-orange-500/50 transition-all flex items-center justify-center gap-2"
+                >
+                  <Flame className="w-5 h-5" />
+                  Analisar Calorias
+                </button>
+              )}
+
+              {calorieResult && (
+                <button
+                  onClick={() => {
+                    setShowCalorieModal(false);
+                    setPhotoFile(null);
+                    setPhotoPreview(null);
+                    setCalorieResult(null);
+                  }}
+                  className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:shadow-lg hover:shadow-green-500/50 transition-all"
+                >
+                  Concluir
+                </button>
               )}
             </div>
           </div>

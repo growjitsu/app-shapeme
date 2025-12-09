@@ -25,26 +25,24 @@ export async function POST(request: NextRequest) {
           content: [
             {
               type: 'text',
-              text: `Analise esta imagem de alimento e forneça uma estimativa nutricional detalhada.
+              text: `Analise esta imagem de comida e forneça:
+1. Nome do prato/alimento principal
+2. Estimativa de calorias totais (em kcal)
+3. Nível de confiança da análise (0-1)
 
-IMPORTANTE: Responda APENAS com um objeto JSON válido, sem texto adicional antes ou depois.
-
-Formato da resposta (JSON puro):
+Responda APENAS em formato JSON válido, sem markdown:
 {
-  "food_name": "nome do alimento em português",
-  "calories": número estimado de calorias,
-  "protein": gramas de proteína,
-  "carbs": gramas de carboidratos,
-  "fat": gramas de gordura,
-  "confidence": "Alta" ou "Média" ou "Baixa"
+  "foodName": "nome do prato",
+  "calories": número_inteiro,
+  "confidence": número_decimal_entre_0_e_1
 }
 
-Seja preciso e realista nas estimativas. Se houver múltiplos alimentos, some os valores totais.`,
+Seja preciso e realista nas estimativas. Se houver múltiplos itens, some as calorias totais.`,
             },
             {
               type: 'image_url',
               image_url: {
-                url: `data:image/jpeg;base64,${image}`,
+                url: image,
               },
             },
           ],
@@ -56,18 +54,30 @@ Seja preciso e realista nas estimativas. Se houver múltiplos alimentos, some os
     const content = response.choices[0].message.content;
     
     if (!content) {
-      throw new Error('Resposta vazia da IA');
+      throw new Error('Resposta vazia da API');
     }
 
-    // Extrair JSON da resposta
-    let jsonMatch = content.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
+    // Parse da resposta JSON
+    let result;
+    try {
+      // Remover markdown se existir
+      const cleanContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      result = JSON.parse(cleanContent);
+    } catch (parseError) {
+      console.error('Erro ao fazer parse da resposta:', content);
       throw new Error('Formato de resposta inválido');
     }
 
-    const result = JSON.parse(jsonMatch[0]);
+    // Validar resposta
+    if (!result.foodName || !result.calories || result.confidence === undefined) {
+      throw new Error('Resposta incompleta da análise');
+    }
 
-    return NextResponse.json(result);
+    return NextResponse.json({
+      foodName: result.foodName,
+      calories: Math.round(result.calories),
+      confidence: result.confidence,
+    });
   } catch (error: any) {
     console.error('Erro ao analisar calorias:', error);
     return NextResponse.json(
