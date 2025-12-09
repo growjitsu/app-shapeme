@@ -4,6 +4,11 @@ import { createServerClient } from '@supabase/ssr';
 
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
+  
+  // Permitir acesso público à página de vendas
+  if (req.nextUrl.pathname === '/meushapenovo' || req.nextUrl.pathname === '/') {
+    return res;
+  }
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -31,7 +36,14 @@ export async function middleware(req: NextRequest) {
     }
   );
 
-  await supabase.auth.getSession();
+  const { data: { session } } = await supabase.auth.getSession();
+
+  // Proteger apenas rotas administrativas
+  if (req.nextUrl.pathname.startsWith('/admin')) {
+    if (!session) {
+      return NextResponse.redirect(new URL('/auth/login', req.url));
+    }
+  }
 
   return res;
 }
