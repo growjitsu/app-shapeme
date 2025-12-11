@@ -481,7 +481,7 @@ export default function AppPage() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
           <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 hover:bg-white/10 transition-all">
             <div className="flex items-center justify-between mb-4">
               <div className="p-3 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl">
@@ -517,127 +517,34 @@ export default function AppPage() {
             </div>
             <h3 className="text-gray-400 text-sm font-medium">Treinos Completos</h3>
           </div>
-
-          <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 hover:bg-white/10 transition-all">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-3 bg-gradient-to-br from-orange-500 to-red-600 rounded-xl">
-                <Flame className="w-6 h-6 text-white" />
-              </div>
-              <span className="text-2xl font-bold text-orange-400">
-                {totalCalories}
-              </span>
-            </div>
-            <h3 className="text-gray-400 text-sm font-medium">Calorias Analisadas</h3>
-          </div>
         </div>
 
-        {/* Progress Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          {/* Weight Progress */}
-          <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bold text-white">Progresso de Peso</h3>
-              <button 
-                onClick={() => setShowWeightModal(true)}
-                className="text-purple-400 hover:text-purple-300 text-sm font-medium flex items-center gap-1"
-              >
-                <Plus className="w-4 h-4" />
-                Adicionar
-              </button>
-            </div>
-            
-            <div className="space-y-4">
-              {weightEntries.length > 0 ? (
-                <>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-400">Peso Inicial</span>
-                    <span className="text-white font-bold">{startWeight.toFixed(1)}kg</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-400">Peso Atual</span>
-                    <span className="text-green-400 font-bold">{currentWeight.toFixed(1)}kg</span>
-                  </div>
-                  {goal && (
-                    <div className="flex justify-between items-center">
-                      <span className="text-gray-400">Meta</span>
-                      <span className="text-purple-400 font-bold">{goal.target_weight.toFixed(1)}kg</span>
-                    </div>
-                  )}
-                  
-                  {goal && (
-                    <div className="pt-4">
-                      <div className="w-full bg-slate-800 rounded-full h-3">
-                        <div 
-                          className="bg-gradient-to-r from-purple-600 to-pink-600 h-3 rounded-full transition-all duration-500"
-                          style={{ 
-                            width: `${Math.min(100, Math.max(0, ((startWeight - currentWeight) / (startWeight - goal.target_weight) * 100)))}%` 
-                          }}
-                        />
-                      </div>
-                      <p className="text-center text-sm text-gray-400 mt-2">
-                        {Math.min(100, Math.max(0, ((startWeight - currentWeight) / (startWeight - goal.target_weight) * 100))).toFixed(0)}% da meta alcançada
-                      </p>
-                    </div>
-                  )}
+        {/* Quick Actions */}
+        <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 mb-8">
+          <h3 className="text-xl font-bold text-white mb-6">Ações Rápidas</h3>
+          
+          <div className="space-y-3">
+            <button 
+              onClick={() => router.push('/meushapenovo/treinos')}
+              className="w-full bg-white/10 border border-white/20 text-white p-4 rounded-xl font-semibold hover:bg-white/20 transition-all flex items-center justify-between group"
+            >
+              <span className="flex items-center gap-3">
+                <Dumbbell className="w-5 h-5" />
+                Ver Treinos
+              </span>
+              <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+            </button>
 
-                  <div className="pt-4 border-t border-white/10">
-                    <h4 className="text-sm font-semibold text-gray-300 mb-3">Últimas Pesagens</h4>
-                    <div className="space-y-2 max-h-40 overflow-y-auto">
-                      {weightEntries.slice(0, 5).map((entry) => (
-                        <div key={entry.id} className="flex justify-between items-center text-sm">
-                          <span className="text-gray-400">
-                            {new Date(entry.date).toLocaleDateString('pt-BR')}
-                          </span>
-                          <span className="text-white font-medium">{entry.weight.toFixed(1)}kg</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div className="text-center py-8">
-                  <TrendingUp className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-                  <p className="text-gray-400 mb-4">
-                    Comece registrando seu peso atual
-                  </p>
-                  <button 
-                    onClick={() => setShowWeightModal(true)}
-                    className="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-6 py-2 rounded-lg font-semibold hover:shadow-lg hover:shadow-purple-500/50 transition-all"
-                  >
-                    Registrar Primeiro Peso
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Quick Actions */}
-          <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6">
-            <h3 className="text-xl font-bold text-white mb-6">Ações Rápidas</h3>
-            
-            <div className="space-y-3">
-              <button 
-                onClick={() => router.push('/meushapenovo/treinos')}
-                className="w-full bg-white/10 border border-white/20 text-white p-4 rounded-xl font-semibold hover:bg-white/20 transition-all flex items-center justify-between group"
-              >
-                <span className="flex items-center gap-3">
-                  <Dumbbell className="w-5 h-5" />
-                  Ver Treinos
-                </span>
-                <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-              </button>
-
-              <button 
-                onClick={() => router.push('/meushapenovo/plano-alimentar')}
-                className="w-full bg-white/10 border border-white/20 text-white p-4 rounded-xl font-semibold hover:bg-white/20 transition-all flex items-center justify-between group"
-              >
-                <span className="flex items-center gap-3">
-                  <Apple className="w-5 h-5" />
-                  Plano Alimentar
-                </span>
-                <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-              </button>
-            </div>
+            <button 
+              onClick={() => router.push('/meushapenovo/plano-alimentar')}
+              className="w-full bg-white/10 border border-white/20 text-white p-4 rounded-xl font-semibold hover:bg-white/20 transition-all flex items-center justify-between group"
+            >
+              <span className="flex items-center gap-3">
+                <Apple className="w-5 h-5" />
+                Plano Alimentar
+              </span>
+              <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+            </button>
           </div>
         </div>
 
@@ -670,20 +577,7 @@ export default function AppPage() {
         )}
 
         {/* Features Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-          <div 
-            onClick={() => setShowCalorieModal(true)}
-            className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 hover:bg-white/10 transition-all cursor-pointer group"
-          >
-            <div className="p-3 bg-gradient-to-br from-orange-500 to-red-600 rounded-xl w-fit mb-4 group-hover:scale-110 transition-transform">
-              <Flame className="w-6 h-6 text-white" />
-            </div>
-            <h3 className="text-lg font-bold text-white mb-2">Análise de Calorias</h3>
-            <p className="text-gray-400 text-sm">
-              Tire uma foto do seu prato e descubra quantas calorias tem.
-            </p>
-          </div>
-
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
           <div 
             onClick={() => setShowGoalModal(true)}
             className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 hover:bg-white/10 transition-all cursor-pointer group"
