@@ -617,28 +617,6 @@ export default function AppPage() {
             
             <div className="space-y-3">
               <button 
-                onClick={() => setShowWeightModal(true)}
-                className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white p-4 rounded-xl font-semibold hover:shadow-lg hover:shadow-purple-500/50 transition-all flex items-center justify-between group"
-              >
-                <span className="flex items-center gap-3">
-                  <Plus className="w-5 h-5" />
-                  Registrar Peso
-                </span>
-                <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-              </button>
-
-              <button 
-                onClick={() => setShowCalorieModal(true)}
-                className="w-full bg-gradient-to-r from-orange-600 to-red-600 text-white p-4 rounded-xl font-semibold hover:shadow-lg hover:shadow-orange-500/50 transition-all flex items-center justify-between group"
-              >
-                <span className="flex items-center gap-3">
-                  <Camera className="w-5 h-5" />
-                  Analisar Calorias
-                </span>
-                <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-              </button>
-
-              <button 
                 onClick={() => router.push('/meushapenovo/treinos')}
                 className="w-full bg-white/10 border border-white/20 text-white p-4 rounded-xl font-semibold hover:bg-white/20 transition-all flex items-center justify-between group"
               >
